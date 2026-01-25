@@ -31,6 +31,8 @@ dependencies = [
     # SSE streaming
     "sse-starlette>=1.8.0",
     "aiosqlite>=0.22.1",
+    "psycopg[binary]>=3.3.2",
+    "greenlet>=3.3.0",
 ]
 
 [build-system]

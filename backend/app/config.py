@@ -7,12 +7,13 @@ class Settings(BaseSettings):
 
     # --- Core Application Settings ---
     app_name: str = "Plandrift API"  # Name used in OpenAPI docs
+    api_v1_str: str = "/api"        # API prefix
     debug: bool = False             # If True, enables debug logs/SQL echo
 
     # --- Security & Auth ---
     secret_key: str = "your-default-secret-key-change-it" # Used to sign JWT tokens
     algorithm: str = "HS256"                              # Hashing algo for tokens
-    access_token_expire_minutes: int = 30                 # Token validity duration
+    access_token_expire_minutes: int = 60 * 24 * 7         # Token validity duration (7 days)
 
     # --- Database ---
     # Default connection string. It will be overwritten by DATABASE_URL in .env
