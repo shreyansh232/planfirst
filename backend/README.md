@@ -2,34 +2,57 @@
 
 FastAPI backend for the Plandrift travel planning application.
 
-## Setup
+## 🛠️ Tech Stack
 
+- **Framework**: FastAPI
+- **Python**: 3.12+ (managed by `uv`)
+- **ORM**: SQLAlchemy 2.0 (Async)
+- **Migrations**: Alembic
+- **Validation**: Pydantic V2
+- **Auth**: JWT (jose) + Passlib (bcrypt)
+- **Database**: PostgreSQL (Dockerized)
+
+## 🚀 Development Setup
+
+### 1. Environment Variables
+Create a `.env` file in this directory (or symlink to the root `.env`):
+
+```env
+DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5433/plandrift
+SECRET_KEY=your-random-secret-key
+ALGORITHM=HS256
+OPENAI_API_KEY=sk-...
+FRONTEND_URL=http://localhost:3000
+```
+
+### 2. Install Dependencies
 ```bash
-# Install dependencies
 uv sync
+```
 
-# Run development server
+### 3. Run Migrations
+Ensure your Docker container is running first.
+```bash
+uv run alembic upgrade head
+```
+
+### 4. Start the Server
+```bash
 uv run uvicorn app.main:app --reload --port 8000
 ```
 
-## Environment Variables
+## 🏗️ Architecture
 
-Create a `.env` file:
+- `app/api/`: Route handlers and dependencies.
+- `app/core/`: Security and configuration logic.
+- `app/db/`: Database models, connection, and CRUD layer.
+- `app/schemas/`: Pydantic models for request/response validation.
+- `app/services/`: Business logic and AI agent integration.
 
-```
-DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/plandrift
-SECRET_KEY=your-super-secret-key
-OPENAI_API_KEY=your-openai-api-key
-FRONTEND_URL=http://localhost:3000
-DEBUG=true
-```
+## 🧪 Common Commands
 
-## Database Migrations
-
-```bash
-# Create a new migration
-uv run alembic revision --autogenerate -m "description"
-
-# Run migrations
-uv run alembic upgrade head
-```
+| Command | Description |
+|---------|-------------|
+| `uv run alembic revision --autogenerate -m "..."` | Create a new migration |
+| `uv run alembic upgrade head` | Apply all migrations |
+| `uv run pytest` | Run tests (if implemented) |

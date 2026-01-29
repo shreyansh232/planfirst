@@ -58,15 +58,19 @@ out/
 ehthumbs.db
 Thumbs.db
 
-# IDEs
-.vscode/
-.idea/
+# Temporary and Task files
+.tmp/
+temp/
+tmp/
+*.tmp
+*.bak
 *.swp
 *.swo
 
 # Project specific logs
 backend_startup.log
 *.log
+*.log.*
 
 # Docker
 .docker/

@@ -27,7 +27,7 @@ from app.db.database import Base
 
 
 class User(Base):
-    """User account table. Authentication handled by better-auth."""
+    """User account table."""
 
     __tablename__ = "users"
 
@@ -36,6 +36,7 @@ class User(Base):
     )
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
@@ -57,8 +58,64 @@ class User(Base):
     trips: Mapped[list["Trip"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
+    refresh_tokens: Mapped[list["RefreshToken"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
 
     __table_args__ = (Index("idx_users_email", "email"),)
+
+
+class RefreshToken(Base):
+    """Refresh token storage for multi-device session management.
+
+    Tokens are hashed before storage for security.
+    Supports revocation and device tracking.
+    """
+
+    __tablename__ = "refresh_tokens"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    token_hash: Mapped[str] = mapped_column(
+        String(255), nullable=False, unique=True
+    )  # SHA-256 hash of the token
+    device_info: Mapped[Optional[str]] = mapped_column(
+        String(255), nullable=True
+    )  # User agent or device identifier
+    ip_address: Mapped[Optional[str]] = mapped_column(
+        String(45), nullable=True
+    )  # IPv4 or IPv6
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    revoked: Mapped[bool] = mapped_column(
+        default=False, server_default="false", nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        server_default=func.timezone("UTC", func.now()),
+        nullable=False,
+    )
+    last_used_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    # Relationships
+    user: Mapped["User"] = relationship(back_populates="refresh_tokens")
+
+    __table_args__ = (
+        Index("idx_refresh_tokens_user_id", "user_id"),
+        Index("idx_refresh_tokens_token_hash", "token_hash"),
+        Index("idx_refresh_tokens_expires_at", "expires_at"),
+    )
 
 
 class UserPreference(Base):

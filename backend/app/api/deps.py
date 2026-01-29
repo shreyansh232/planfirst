@@ -3,11 +3,12 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.database import AsyncSessionLocal
-from jose import JWTError, jwt
 from fastapi.security import OAuth2PasswordBearer
 from app.config import get_settings
 from app.db.models import User
 from fastapi import Depends, HTTPException, status
+from app.core.security import verify_access_token
+import jwt
 
 settings = get_settings()
 
@@ -31,19 +32,22 @@ async def get_current_user(
     )
 
     try:
-        # Decode the jwt
-        payload = jwt.decode(
-            token, settings.secret_key, algorithms=[settings.algorithm]
-        )
+        # Use our utility which handles SecretStr and decoding
+        payload = verify_access_token(token)
 
-        user_id: str | None = payload.get("sub")
-        if user_id is None:
+        user_id_str: str | None = payload.get("sub")
+        if user_id_str is None:
             raise credentials_exception
-    except JWTError:
-        # If signature is wrong, token is expired, or malformed -> Raise 401
+            
+        # Convert to UUID inside the try block to catch format errors
+        user_id = UUID(user_id_str)
+        
+    except (jwt.PyJWTError, ValueError):
+        # If signature is wrong, expired, malformed, or user_id is not a valid UUID
         raise credentials_exception
-    # We convert the string ID back to a UUID for Postgres
-    result = await db.execute(select(User).where(User.id == UUID(user_id)))
+
+    # Execute query
+    result = await db.execute(select(User).where(User.id == user_id))
 
     user = result.scalar_one_or_none()
 
