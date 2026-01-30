@@ -12,6 +12,7 @@ dependencies = [
     "dotenv>=0.9.9",
     "ddgs>=8.0.0",
     "pwdlib[argon2]>=0.3.0",
+    "alembic>=1.18.3",
 ]
 
 [project.scripts]

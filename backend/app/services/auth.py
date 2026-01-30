@@ -150,6 +150,13 @@ async def authenticate_user(
             detail="Incorrect email or password",
         )
 
+    # Check if user has a password (OAuth users don't have passwords)
+    if not user.hashed_password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This account uses Google OAuth. Please sign in with Google.",
+        )
+
     # Verify password
     if not verify_password(user_in.password, user.hashed_password):
         raise HTTPException(

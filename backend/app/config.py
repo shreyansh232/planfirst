@@ -23,6 +23,11 @@ class Settings(BaseSettings):
         None  # Optional separate secret for refresh tokens
     )
 
+    # Google auth
+    GOOGLE_CLIENT_ID: Optional[str] = None
+    GOOGLE_CLIENT_SECRET: Optional[str] = None
+    GOOGLE_REDIRECT_URI: str = "http://localhost:8000/api/auth/google/callback"
+
     # --- Database ---
     # Default connection string. It will be overwritten by DATABASE_URL in .env
     database_url: str = (

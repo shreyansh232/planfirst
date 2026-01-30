@@ -36,7 +36,18 @@ class User(Base):
     )
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
+    hashed_password: Mapped[Optional[str]] = mapped_column(
+        String(255), nullable=True
+    )  # Nullable for OAuth users
+    google_id: Mapped[Optional[str]] = mapped_column(
+        String(255), unique=True, nullable=True
+    )  # Google OAuth user ID
+    picture_url: Mapped[Optional[str]] = mapped_column(
+        String(500), nullable=True
+    )  # Profile picture URL
+    auth_provider: Mapped[str] = mapped_column(
+        String(50), default="email", server_default="email", nullable=False
+    )  # "email" or "google"
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
@@ -62,7 +73,10 @@ class User(Base):
         back_populates="user", cascade="all, delete-orphan"
     )
 
-    __table_args__ = (Index("idx_users_email", "email"),)
+    __table_args__ = (
+        Index("idx_users_email", "email"),
+        Index("idx_users_google_id", "google_id"),
+    )
 
 
 class RefreshToken(Base):
