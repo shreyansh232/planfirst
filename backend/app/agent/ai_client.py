@@ -13,7 +13,7 @@ from pydantic import BaseModel
 T = TypeVar("T", bound=BaseModel)
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
-DEFAULT_MODEL = "google/gemini-3-flash-preview"
+DEFAULT_MODEL = "openai/gpt-4o-mini"
 
 
 class AIClient:
@@ -208,6 +208,8 @@ class AIClient:
         response_format: Type[T],
         temperature: float = 0.7,
         max_retries: int = 1,
+        include_schema: bool = True,
+        include_example: bool = True,
     ) -> T:
         """Send a chat request and parse response into a Pydantic model.
 
@@ -225,7 +227,7 @@ class AIClient:
             Parsed response as the specified Pydantic model.
         """
         schema = response_format.model_json_schema()
-        example = self._build_example(schema)
+        example = self._build_example(schema) if include_example else None
 
         schema_instruction = (
             "Respond with a JSON object using EXACTLY the structure below. "
@@ -234,8 +236,8 @@ class AIClient:
             "Do NOT flatten objects into strings. For example, if the schema shows "
             'an array of objects like [{"activity": "...", "cost_estimate": "..."}], '
             "each element MUST be an object with those keys, NOT a plain string.\n\n"
-            f"Expected structure:\n{json.dumps(example, indent=2)}\n\n"
-            f"Full JSON schema for reference:\n{json.dumps(schema, indent=2)}\n\n"
+            f"{'Expected structure:\\n' + json.dumps(example, indent=2) + '\\n\\n' if include_example else ''}"
+            f"{'Full JSON schema for reference:\\n' + json.dumps(schema, indent=2) + '\\n\\n' if include_schema else ''}"
             "Return ONLY the JSON object. No markdown, no explanation."
         )
 

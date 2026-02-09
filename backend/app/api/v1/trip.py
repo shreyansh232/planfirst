@@ -20,10 +20,13 @@ CRUD
   DELETE /trips/{id}             → Delete trip + versions + session
 """
 
-from typing import Annotated, Optional
+from typing import Annotated, AsyncGenerator, Optional
+import json
+import asyncio
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -38,6 +41,47 @@ from app.schemas.trip import (
 from app.services import trip as trip_service
 
 router = APIRouter(prefix="/trips", tags=["trips"])
+
+
+def _chunk_text(text: str, size: int = 20) -> list[str]:
+    return [text[i : i + size] for i in range(0, len(text), size)]
+
+
+def _make_status_callback(status_queue: asyncio.Queue[str]) -> callable:
+    loop = asyncio.get_running_loop()
+
+    def _cb(message: str) -> None:
+        loop.call_soon_threadsafe(status_queue.put_nowait, message)
+
+    return _cb
+
+
+async def _stream_agent_response(
+    response: AgentResponse,
+    status_queue: "asyncio.Queue[str] | None" = None,
+) -> AsyncGenerator[str, None]:
+    meta = {
+        "trip_id": str(response.trip_id) if response.trip_id else None,
+        "version_id": str(response.version_id) if response.version_id else None,
+        "phase": response.phase,
+        "has_high_risk": response.has_high_risk,
+    }
+    yield f"event: meta\ndata: {json.dumps(meta)}\n\n"
+
+    if status_queue:
+        while True:
+            status = await status_queue.get()
+            if status == "__done__":
+                break
+            payload = json.dumps({"text": status})
+            yield f"event: status\ndata: {payload}\n\n"
+
+    for chunk in _chunk_text(response.message):
+        payload = json.dumps({"text": chunk})
+        yield f"event: delta\ndata: {payload}\n\n"
+        await asyncio.sleep(0.06)
+
+    yield "event: done\ndata: {}\n\n"
 
 
 # ---------------------------------------------------------------------------
@@ -125,6 +169,32 @@ async def start_trip(
     )
 
 
+@router.post("/start/stream")
+async def start_trip_stream(
+    body: StartTripRequest,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> StreamingResponse:
+    # Early rate-limit check for free users to return a proper 429
+    await trip_service._enforce_plan_limit(db, current_user.id)
+
+    status_queue: asyncio.Queue[str] = asyncio.Queue()
+
+    async def runner() -> AgentResponse:
+        return await trip_service.start_trip_conversation(
+            db, current_user.id, body.prompt
+        )
+
+    async def generator() -> AsyncGenerator[str, None]:
+        task = asyncio.create_task(runner())
+        response = await task
+        await status_queue.put("__done__")
+        async for chunk in _stream_agent_response(response, status_queue):
+            yield chunk
+
+    return StreamingResponse(generator(), media_type="text/event-stream")
+
+
 @router.post("/{trip_id}/clarify", response_model=AgentResponse)
 async def clarify_trip(
     trip_id: UUID,
@@ -141,6 +211,30 @@ async def clarify_trip(
     return await trip_service.submit_clarification(
         db, trip_id, current_user.id, body.answers
     )
+
+
+@router.post("/{trip_id}/clarify/stream")
+async def clarify_trip_stream(
+    trip_id: UUID,
+    body: ClarifyRequest,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> StreamingResponse:
+    status_queue: asyncio.Queue[str] = asyncio.Queue()
+
+    async def runner() -> AgentResponse:
+        return await trip_service.submit_clarification(
+            db, trip_id, current_user.id, body.answers
+        )
+
+    async def generator() -> AsyncGenerator[str, None]:
+        task = asyncio.create_task(runner())
+        response = await task
+        await status_queue.put("__done__")
+        async for chunk in _stream_agent_response(response, status_queue):
+            yield chunk
+
+    return StreamingResponse(generator(), media_type="text/event-stream")
 
 
 @router.post("/{trip_id}/proceed", response_model=AgentResponse)
@@ -160,6 +254,30 @@ async def proceed_trip(
     return await trip_service.proceed_after_feasibility(
         db, trip_id, current_user.id, body.proceed
     )
+
+
+@router.post("/{trip_id}/proceed/stream")
+async def proceed_trip_stream(
+    trip_id: UUID,
+    body: ProceedRequest,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> StreamingResponse:
+    status_queue: asyncio.Queue[str] = asyncio.Queue()
+
+    async def runner() -> AgentResponse:
+        return await trip_service.proceed_after_feasibility(
+            db, trip_id, current_user.id, body.proceed
+        )
+
+    async def generator() -> AsyncGenerator[str, None]:
+        task = asyncio.create_task(runner())
+        response = await task
+        await status_queue.put("__done__")
+        async for chunk in _stream_agent_response(response, status_queue):
+            yield chunk
+
+    return StreamingResponse(generator(), media_type="text/event-stream")
 
 
 @router.post("/{trip_id}/assumptions", response_model=AgentResponse)
@@ -184,6 +302,42 @@ async def confirm_assumptions(
     )
 
 
+@router.post("/{trip_id}/assumptions/stream")
+async def confirm_assumptions_stream(
+    trip_id: UUID,
+    body: AssumptionsRequest,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> StreamingResponse:
+    status_queue: asyncio.Queue[str] = asyncio.Queue()
+
+    async def runner() -> AgentResponse:
+        return await trip_service.confirm_trip_assumptions(
+            db,
+            trip_id,
+            current_user.id,
+            body.confirmed,
+            modifications=body.modifications,
+            additional_interests=body.additional_interests,
+            on_status=_make_status_callback(status_queue),
+        )
+
+    async def generator() -> AsyncGenerator[str, None]:
+        task = asyncio.create_task(runner())
+        while not task.done():
+            try:
+                status = await asyncio.wait_for(status_queue.get(), timeout=0.2)
+                payload = json.dumps({"text": status})
+                yield f"event: status\ndata: {payload}\n\n"
+            except asyncio.TimeoutError:
+                continue
+        response = await task
+        async for chunk in _stream_agent_response(response):
+            yield chunk
+
+    return StreamingResponse(generator(), media_type="text/event-stream")
+
+
 @router.post("/{trip_id}/refine", response_model=AgentResponse)
 async def refine_trip(
     trip_id: UUID,
@@ -198,6 +352,40 @@ async def refine_trip(
     return await trip_service.refine_trip_plan(
         db, trip_id, current_user.id, body.refinement_type
     )
+
+
+@router.post("/{trip_id}/refine/stream")
+async def refine_trip_stream(
+    trip_id: UUID,
+    body: RefineRequest,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> StreamingResponse:
+    status_queue: asyncio.Queue[str] = asyncio.Queue()
+
+    async def runner() -> AgentResponse:
+        return await trip_service.refine_trip_plan(
+            db,
+            trip_id,
+            current_user.id,
+            body.refinement_type,
+            on_status=_make_status_callback(status_queue),
+        )
+
+    async def generator() -> AsyncGenerator[str, None]:
+        task = asyncio.create_task(runner())
+        while not task.done():
+            try:
+                status = await asyncio.wait_for(status_queue.get(), timeout=0.2)
+                payload = json.dumps({"text": status})
+                yield f"event: status\ndata: {payload}\n\n"
+            except asyncio.TimeoutError:
+                continue
+        response = await task
+        async for chunk in _stream_agent_response(response):
+            yield chunk
+
+    return StreamingResponse(generator(), media_type="text/event-stream")
 
 
 # ---------------------------------------------------------------------------

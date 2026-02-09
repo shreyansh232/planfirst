@@ -9,7 +9,8 @@ Contains all business logic for the trip planning conversation:
 
 import asyncio
 import logging
-from typing import Optional
+from typing import Optional, Callable
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from fastapi import HTTPException, status
@@ -19,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent.agent import TravelAgent
 from app.config import get_settings
-from app.db.models import Trip, TripVersion
+from app.db.models import Trip, TripVersion, User
 from app.schemas.trip import (
     AgentResponse,
     TripResponse,
@@ -129,6 +130,7 @@ async def start_trip_conversation(
     db: AsyncSession,
     user_id: UUID,
     prompt: str,
+    on_status: Optional[Callable[[str], None]] = None,
 ) -> AgentResponse:
     """Start a new trip planning conversation.
 
@@ -146,7 +148,10 @@ async def start_trip_conversation(
     Returns:
         AgentResponse with clarification questions.
     """
-    agent = TravelAgent(api_key=settings.openrouter_api_key)
+    # Enforce plan limits for free users (1 session per 2 days)
+    await _enforce_plan_limit(db, user_id)
+
+    agent = TravelAgent(api_key=settings.openrouter_api_key, on_status=on_status)
 
     # AI call — run in thread pool so we don't block the event loop
     message = await asyncio.to_thread(agent.start, prompt)
@@ -166,12 +171,43 @@ async def start_trip_conversation(
         await db.flush()
     except IntegrityError:
         await db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=(
-                f"You already have a trip from {agent.state.origin} "
-                f"to {agent.state.destination}."
-            ),
+        # Existing trip for this origin/destination — reuse it and start
+        # a fresh planning session/version instead of failing.
+        existing_result = await db.execute(
+            select(Trip).where(
+                Trip.user_id == user_id,
+                Trip.origin == agent.state.origin,
+                Trip.destination == agent.state.destination,
+            )
+        )
+        existing_trip = existing_result.scalar_one_or_none()
+        if existing_trip is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    f"You already have a trip from {agent.state.origin} "
+                    f"to {agent.state.destination}."
+                ),
+            )
+
+        latest = await _latest_version(db, existing_trip.id)
+        version = TripVersion(
+            trip_id=existing_trip.id,
+            version_number=latest.version_number + 1,
+            phase="clarification",
+        )
+        db.add(version)
+        await db.commit()
+        await db.refresh(existing_trip)
+        await db.refresh(version)
+
+        _agent_sessions[existing_trip.id] = agent
+
+        return AgentResponse(
+            trip_id=existing_trip.id,
+            version_id=version.id,
+            phase=agent.state.phase.value,
+            message=message,
         )
 
     version = TripVersion(
@@ -198,6 +234,7 @@ async def submit_clarification(
     trip_id: UUID,
     user_id: UUID,
     answers: str,
+    on_status: Optional[Callable[[str], None]] = None,
 ) -> AgentResponse:
     """Submit answers to clarification questions and run feasibility check.
 
@@ -212,6 +249,7 @@ async def submit_clarification(
     """
     await _get_user_trip(db, trip_id, user_id)
     agent = _get_agent(trip_id)
+    agent.on_status = on_status
     version = await _latest_version(db, trip_id)
 
     message, has_high_risk = await asyncio.to_thread(
@@ -234,6 +272,7 @@ async def proceed_after_feasibility(
     trip_id: UUID,
     user_id: UUID,
     proceed: bool,
+    on_status: Optional[Callable[[str], None]] = None,
 ) -> AgentResponse:
     """Proceed (or not) after feasibility and generate planning assumptions.
 
@@ -252,6 +291,7 @@ async def proceed_after_feasibility(
     """
     await _get_user_trip(db, trip_id, user_id)
     agent = _get_agent(trip_id)
+    agent.on_status = on_status
     version = await _latest_version(db, trip_id)
 
     if agent.state.awaiting_confirmation:
@@ -276,6 +316,7 @@ async def confirm_trip_assumptions(
     confirmed: bool,
     modifications: Optional[str] = None,
     additional_interests: Optional[str] = None,
+    on_status: Optional[Callable[[str], None]] = None,
 ) -> AgentResponse:
     """Confirm or adjust assumptions, then generate the full itinerary.
 
@@ -295,6 +336,7 @@ async def confirm_trip_assumptions(
     """
     await _get_user_trip(db, trip_id, user_id)
     agent = _get_agent(trip_id)
+    agent.on_status = on_status
     version = await _latest_version(db, trip_id)
 
     message = await asyncio.to_thread(
@@ -319,6 +361,7 @@ async def refine_trip_plan(
     trip_id: UUID,
     user_id: UUID,
     refinement_type: str,
+    on_status: Optional[Callable[[str], None]] = None,
 ) -> AgentResponse:
     """Refine the generated plan.
 
@@ -335,6 +378,7 @@ async def refine_trip_plan(
     """
     await _get_user_trip(db, trip_id, user_id)
     agent = _get_agent(trip_id)
+    agent.on_status = on_status
     version = await _latest_version(db, trip_id)
 
     message = await asyncio.to_thread(agent.refine_plan, refinement_type)
@@ -503,3 +547,32 @@ async def delete_user_trip(
 
     await db.delete(trip)
     await db.commit()
+async def _enforce_plan_limit(db: AsyncSession, user_id: UUID) -> None:
+    user = await db.get(User, user_id)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
+    if user.user_type == "admin":
+        return
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=2)
+    result = await db.execute(
+        select(Trip)
+        .where(Trip.user_id == user_id, Trip.created_at >= cutoff)
+        .order_by(Trip.created_at.desc())
+        .limit(1)
+    )
+    recent_trip = result.scalar_one_or_none()
+    if recent_trip:
+        next_allowed = recent_trip.created_at + timedelta(days=2)
+        next_allowed_str = next_allowed.astimezone(timezone.utc).strftime(
+            "%Y-%m-%d %H:%M UTC"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=(
+                "Free plan limit reached. You can start a new plan after "
+                f"{next_allowed_str}."
+            ),
+        )

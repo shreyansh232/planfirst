@@ -51,16 +51,16 @@ List all assumptions explicitly."""
     )
     state.assumptions = assumptions
 
-    response = "Here's what I'm going with:\n\n"
+    response = "**Here's what I'm going with:**\n\n"
     for assumption in assumptions.assumptions:
-        response += f"- {assumption}\n"
+        response += f"• {assumption}\n"
 
     if assumptions.uncertain_assumptions:
-        response += "\nNot sure about these — let me know:\n"
+        response += "\n**Not sure about these — let me know:**\n"
         for uncertain in assumptions.uncertain_assumptions:
-            response += f"- [?] {uncertain}\n"
+            response += f"• {uncertain}\n"
 
-    response += "\nLook good? Or want me to change anything?"
+    response += "\n**Look good? Or want me to change anything?**"
     state.awaiting_confirmation = True
     state.add_message("assistant", response)
     return response
@@ -181,16 +181,16 @@ List all assumptions explicitly."""
     )
     state.assumptions = assumptions
 
-    response = "Updated — here's what I'm going with now:\n\n"
+    response = "**Updated — here's what I'm going with now:**\n\n"
     for assumption in assumptions.assumptions:
-        response += f"- {assumption}\n"
+        response += f"• {assumption}\n"
 
     if assumptions.uncertain_assumptions:
-        response += "\nStill not sure about:\n"
+        response += "\n**Still not sure about:**\n"
         for uncertain in assumptions.uncertain_assumptions:
-            response += f"- [?] {uncertain}\n"
+            response += f"• {uncertain}\n"
 
-    response += "\nLook good? Or want me to change anything?"
+    response += "\n**Look good? Or want me to change anything?**"
     state.awaiting_confirmation = True
     state.add_message("assistant", response)
     return response
@@ -251,8 +251,8 @@ List all assumptions explicitly."""
     state.assumptions = assumptions
 
     # Log the updated assumptions for the conversation history
-    response = "Got it — incorporating your preferences and proceeding to plan.\n\n"
-    response += "Assumptions:\n"
+    response = "**Got it — incorporating your preferences and proceeding to plan.**\n\n"
+    response += "**Assumptions:**\n"
     for assumption in assumptions.assumptions:
-        response += f"- {assumption}\n"
+        response += f"• {assumption}\n"
     state.add_message("assistant", response)

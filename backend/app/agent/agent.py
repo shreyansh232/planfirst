@@ -22,8 +22,9 @@ class TravelAgent:
     def __init__(
         self,
         api_key: Optional[str] = None,
-        model: str = "google/gemini-3-flash-preview",
+        model: str = "openai/gpt-4o-mini",
         on_search: Optional[Callable[[str], None]] = None,
+        on_status: Optional[Callable[[str], None]] = None,
     ):
         """Initialize the travel agent.
 
@@ -38,12 +39,36 @@ class TravelAgent:
         self.search_results: list[str] = []  # Store search results for context
         self.user_interests: list[str] = []  # Store user interests/adjustments
         self._initial_extraction = None
+        self.on_status = on_status
+        self._last_status: Optional[str] = None
+
+    def _emit_status(self, message: str) -> None:
+        if not self.on_status:
+            return
+        if message == self._last_status:
+            return
+        self._last_status = message
+        self.on_status(message)
 
     def _handle_tool_call(self, tool_name: str, arguments: dict) -> None:
         """Handle tool call notifications."""
         if tool_name == "web_search" and self.on_search:
             query = arguments.get("query", "")
             self.on_search(query)
+        if tool_name == "web_search":
+            query = (arguments.get("query", "") or "").lower()
+            if "flight" in query or "flights" in query:
+                self._emit_status("Searching flights...")
+            elif "hotel" in query or "hostel" in query:
+                self._emit_status("Finding stays...")
+            elif "transport" in query or "metro" in query or "train" in query or "pass" in query:
+                self._emit_status("Estimating local transport...")
+            elif "meal" in query or "food" in query:
+                self._emit_status("Estimating meal costs...")
+            elif "entry fee" in query or "ticket" in query or "attraction" in query:
+                self._emit_status("Checking activity costs...")
+            else:
+                self._emit_status("Researching local details...")
 
     def start(self, user_prompt: str) -> str:
         """Start a new travel planning conversation.
@@ -183,6 +208,7 @@ class TravelAgent:
         Returns:
             Day-by-day travel plan.
         """
+        self._emit_status("Researching current prices...")
         return planning.generate_plan(
             self.client,
             self.state,

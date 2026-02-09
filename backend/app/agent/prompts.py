@@ -64,7 +64,7 @@ RULES:
 - Don't list obvious things (e.g., "the user wants to travel" — obviously).
 - If the user mentioned specific interests, ALWAYS include them.
 - Be conversational, not formal.
-- Label genuinely uncertain ones with [?] so the user can correct them."""
+- Do NOT use bracket tags like "[?]". If something is uncertain, phrase it plainly as a question at the end of the sentence."""
 
 PLANNING_PROMPT = """You are creating a day-by-day travel itinerary.
 

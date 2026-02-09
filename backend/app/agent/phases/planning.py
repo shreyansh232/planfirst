@@ -70,7 +70,6 @@ def generate_plan(
 PREVIOUS RESEARCH is provided above. Do NOT re-search for information already available there (e.g., if flight prices, hostel prices, or attraction info is already present, skip those searches).
 
 Only search for information NOT already covered. Typical gaps to fill:
-- Local transport costs (train passes, metro, taxi) if not already researched
 - Specific attraction entry fees if not already researched
 - Average meal costs if not already researched
 - Offbeat or hidden-gem places near the main destinations
@@ -89,12 +88,13 @@ Use web_search to find current prices for gaps only, then create the itinerary."
     ]
 
     # Gather current planning information
+    # Run a small number of web searches to keep plans current but fast.
     planning_research = client.chat_with_tools(
         messages=messages,
         tools=TOOL_DEFINITIONS,
         tool_executor=execute_tool,
         temperature=0.5,
-        max_tool_calls=8,
+        max_tool_calls=5,
         on_tool_call=on_tool_call,
     )
 
@@ -125,7 +125,14 @@ Provide realistic estimates based on research."""
         {"role": "user", "content": plan_prompt},
     ]
 
-    plan = client.chat_structured(plan_messages, TravelPlan, temperature=0.7)
+    plan = client.chat_structured(
+        plan_messages,
+        TravelPlan,
+        temperature=0.6,
+        max_retries=0,
+        include_schema=False,
+        include_example=True,
+    )
     state.current_plan = plan
     state.phase = Phase.REFINEMENT
 

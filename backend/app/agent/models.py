@@ -180,6 +180,51 @@ class BudgetBreakdown(BaseModel):
     )
 
 
+class FlightOption(BaseModel):
+    """Flight option with booking link."""
+
+    route: str = Field(description="Route summary for the flight")
+    price: str = Field(description="Total price estimate")
+    airline: Optional[str] = Field(
+        default=None, description="Primary airline name if available"
+    )
+    depart_time: Optional[str] = Field(
+        default=None, description="Departure time (local) if available"
+    )
+    arrive_time: Optional[str] = Field(
+        default=None, description="Arrival time (local) if available"
+    )
+    duration: Optional[str] = Field(
+        default=None, description="Total flight duration if available"
+    )
+    booking_url: str = Field(description="Direct booking link")
+    notes: Optional[str] = Field(
+        default=None,
+        description="Notes such as baggage, layovers, airline, or fare class",
+    )
+
+
+class LodgingOption(BaseModel):
+    """Hotel/hostel option with booking link."""
+
+    name: str = Field(description="Property name")
+    location: Optional[str] = Field(
+        default=None, description="Neighborhood or area"
+    )
+    price_per_night: str = Field(description="Nightly price estimate")
+    rating: Optional[str] = Field(
+        default=None, description="Rating score if available"
+    )
+    property_type: Optional[str] = Field(
+        default=None, description="Hotel/hostel/guesthouse etc."
+    )
+    booking_url: str = Field(description="Direct booking link")
+    notes: Optional[str] = Field(
+        default=None,
+        description="Notes such as cancellation policy, breakfast, room type",
+    )
+
+
 class TravelPlan(BaseModel):
     """Complete travel itinerary."""
 
@@ -189,6 +234,14 @@ class TravelPlan(BaseModel):
     buffer_days: int = Field(default=0, description="Number of buffer days included")
     acclimatization_notes: Optional[str] = Field(
         default=None, description="Acclimatization logic if applicable"
+    )
+    flights: list[FlightOption] = Field(
+        default_factory=list,
+        description="Cheapest direct flight options with booking links",
+    )
+    lodgings: list[LodgingOption] = Field(
+        default_factory=list,
+        description="Recommended hotels/hostels with booking links",
     )
     budget_breakdown: Optional[BudgetBreakdown] = Field(
         default=None, description="Detailed budget breakdown for the trip"

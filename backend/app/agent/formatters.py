@@ -64,10 +64,12 @@ def format_plan(plan: TravelPlan) -> str:
         Formatted plan string.
     """
     lines = [f"**{plan.summary}**"]
-    lines.append(f"Route: {plan.route}")
+    lines.append(f"• Route: {plan.route}")
 
     if plan.acclimatization_notes:
-        lines.append(f"Note: {plan.acclimatization_notes}")
+        lines.append(f"• Note: {plan.acclimatization_notes}")
+
+    # Flights and lodgings intentionally omitted for faster responses.
 
     lines.append("\n---\n")
 
@@ -79,11 +81,11 @@ def format_plan(plan: TravelPlan) -> str:
                 f" — {activity.cost_estimate}" if activity.cost_estimate else ""
             )
             notes_str = f"  ({activity.cost_notes})" if activity.cost_notes else ""
-            lines.append(f"  - {activity.activity}{cost_str}{notes_str}")
+            lines.append(f"• {activity.activity}{cost_str}{notes_str}")
 
         if day.travel_time:
             travel_cost = f" ({day.travel_cost})" if day.travel_cost else ""
-            lines.append(f"  Travel: {day.travel_time}{travel_cost}")
+            lines.append(f"• Travel: {day.travel_time}{travel_cost}")
 
         if day.accommodation:
             acc_cost = (
@@ -91,22 +93,22 @@ def format_plan(plan: TravelPlan) -> str:
                 if day.accommodation_cost
                 else ""
             )
-            lines.append(f"  Stay: {day.accommodation}{acc_cost}")
+            lines.append(f"• Stay: {day.accommodation}{acc_cost}")
 
         if day.meals_cost:
-            lines.append(f"  Meals: ~{day.meals_cost}")
+            lines.append(f"• Meals: ~{day.meals_cost}")
 
         if day.day_total:
-            lines.append(f"  Day total: {day.day_total}")
+            lines.append(f"• Day total: {day.day_total}")
 
         if day.notes:
-            lines.append(f"  ⚠ {day.notes}")
+            lines.append(f"• ⚠ {day.notes}")
 
         # Display tips for this day
         if day.tips:
-            lines.append("  Tips:")
+            lines.append("• Tips:")
             for tip in day.tips:
-                lines.append(f"    → {tip}")
+                lines.append(f"  → {tip}")
 
         lines.append("")
 
@@ -115,13 +117,13 @@ def format_plan(plan: TravelPlan) -> str:
         b = plan.budget_breakdown
         lines.append("---\n")
         lines.append("**Budget Breakdown**\n")
-        lines.append(f"  Flights: {b.flights}")
-        lines.append(f"  Accommodation: {b.accommodation}")
-        lines.append(f"  Transport: {b.local_transport}")
-        lines.append(f"  Meals: {b.meals}")
-        lines.append(f"  Activities: {b.activities}")
-        lines.append(f"  Misc: {b.miscellaneous}")
-        lines.append(f"  **Total: {b.total}**")
+        lines.append(f"• Flights: {b.flights}")
+        lines.append(f"• Accommodation: {b.accommodation}")
+        lines.append(f"• Transport: {b.local_transport}")
+        lines.append(f"• Meals: {b.meals}")
+        lines.append(f"• Activities: {b.activities}")
+        lines.append(f"• Misc: {b.miscellaneous}")
+        lines.append(f"• **Total: {b.total}**")
         if b.notes:
             lines.append(f"\n{b.notes}")
 
@@ -130,6 +132,6 @@ def format_plan(plan: TravelPlan) -> str:
         lines.append("\n---\n")
         lines.append("**Tips & Good to Know**\n")
         for tip in plan.general_tips:
-            lines.append(f"  • {tip}")
+            lines.append(f"• {tip}")
 
     return "\n".join(lines)

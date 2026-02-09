@@ -18,6 +18,8 @@ class UserResponse(BaseModel):
     id: UUID
     email: EmailStr
     name: str | None
+    picture_url: str | None
+    user_type: str
     created_at: datetime
     updated_at: datetime
 

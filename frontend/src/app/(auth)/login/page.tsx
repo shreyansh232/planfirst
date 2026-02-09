@@ -1,84 +1,53 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { signIn } from "@/lib/auth-client";
+import { getGoogleLoginUrl } from "@/lib/api";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default function LoginPage() {
-  const router = useRouter();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError("");
-    setLoading(true);
-
-    try {
-      await signIn.email({ email, password });
-      router.push("/dashboard");
-    } catch {
-      setError("Invalid email or password");
-    } finally {
-      setLoading(false);
-    }
+  const handleGoogleSignIn = () => {
+    window.location.href = getGoogleLoginUrl();
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800">
-      <Card className="w-full max-w-md">
+    <div className="min-h-screen flex items-center justify-center bg-white px-6">
+      <Card className="w-full max-w-md border-black/10 shadow-sm">
         <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl font-bold">Welcome back</CardTitle>
-          <CardDescription>Sign in to your Plandrift account</CardDescription>
+          <CardTitle className="text-2xl font-bold text-black">Welcome back</CardTitle>
+          <CardDescription className="text-slate-600">
+            Sign in with Google to continue
+          </CardDescription>
         </CardHeader>
-        <form onSubmit={handleSubmit}>
-          <CardContent className="space-y-4">
-            {error && (
-              <div className="p-3 text-sm text-red-500 bg-red-50 rounded-md">
-                {error}
-              </div>
-            )}
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="you@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-              />
-            </div>
-          </CardContent>
-          <CardFooter className="flex flex-col space-y-4">
-            <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? "Signing in..." : "Sign in"}
-            </Button>
-            <p className="text-sm text-center text-muted-foreground">
-              Don&apos;t have an account?{" "}
-              <Link href="/register" className="text-primary hover:underline">
-                Sign up
-              </Link>
-            </p>
-          </CardFooter>
-        </form>
+        <CardContent className="space-y-4">
+          <Button
+            type="button"
+            className="w-full bg-black text-white hover:bg-black/90"
+            onClick={handleGoogleSignIn}
+          >
+            <span className="flex items-center gap-2">
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 24 24"
+                className="h-4 w-4"
+              >
+                <path
+                  d="M12 10.2v3.9h5.5c-.2 1.4-1.7 4.1-5.5 4.1-3.3 0-6-2.7-6-6s2.7-6 6-6c1.9 0 3.1.8 3.8 1.5l2.6-2.5C17.5 3.6 15 2.5 12 2.5 6.9 2.5 2.8 6.6 2.8 11.7S6.9 20.9 12 20.9c6.9 0 8.6-4.8 8.6-7.2 0-.5-.1-.9-.2-1.3H12z"
+                  fill="currentColor"
+                />
+              </svg>
+              Continue with Google
+            </span>
+          </Button>
+        </CardContent>
+        <CardFooter className="flex flex-col space-y-2">
+          <p className="text-xs text-slate-500 text-center">
+            We only support Google sign-in for now.
+          </p>
+          <Link href="/" className="text-sm text-black underline-offset-4 hover:underline">
+            Back to home
+          </Link>
+        </CardFooter>
       </Card>
     </div>
   );

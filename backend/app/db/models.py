@@ -45,6 +45,9 @@ class User(Base):
     picture_url: Mapped[Optional[str]] = mapped_column(
         String(500), nullable=True
     )  # Profile picture URL
+    user_type: Mapped[str] = mapped_column(
+        String(50), default="free", server_default="free", nullable=False
+    )  # "free", "admin", "paid"
     auth_provider: Mapped[str] = mapped_column(
         String(50), default="email", server_default="email", nullable=False
     )  # "email" or "google"

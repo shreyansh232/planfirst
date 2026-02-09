@@ -2,6 +2,7 @@
 
 import json
 from typing import Any
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
 
 from ddgs import DDGS
 
@@ -48,7 +49,7 @@ TIPS FOR BETTER PRICE RESULTS:
 ]
 
 
-def web_search(query: str, num_results: int = 8) -> list[dict[str, str]]:
+def web_search(query: str, num_results: int = 5) -> list[dict[str, str]]:
     """Search the web using DuckDuckGo.
 
     Args:
@@ -58,11 +59,16 @@ def web_search(query: str, num_results: int = 8) -> list[dict[str, str]]:
     Returns:
         List of search results with title, url, and snippet.
     """
-    num_results = min(num_results, 10)
+    num_results = min(num_results, 5)
 
     try:
-        with DDGS() as ddgs:
-            results = list(ddgs.text(query, max_results=num_results))
+        def _run() -> list[dict]:
+            with DDGS() as ddgs:
+                return list(ddgs.text(query, max_results=num_results))
+
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(_run)
+            results = future.result(timeout=8)
 
         return [
             {
@@ -72,6 +78,8 @@ def web_search(query: str, num_results: int = 8) -> list[dict[str, str]]:
             }
             for r in results
         ]
+    except TimeoutError:
+        return [{"error": "Search timed out. Proceed with estimates."}]
     except Exception as e:
         return [{"error": f"Search failed: {str(e)}"}]
 
