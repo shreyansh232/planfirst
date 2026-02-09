@@ -16,7 +16,7 @@ OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 DEFAULT_MODEL = "google/gemini-3-flash-preview"
 
 
-class OpenAIClient:
+class AIClient:
     """Wrapper for OpenRouter (OpenAI-compatible) API with structured output parsing."""
 
     def __init__(

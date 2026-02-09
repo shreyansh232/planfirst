@@ -209,3 +209,16 @@ class TripSummary(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# === Agent conversation response ===
+
+
+class AgentResponse(BaseModel):
+    """Unified response returned by every agent conversation endpoint."""
+
+    trip_id: UUID | None = None
+    version_id: UUID | None = None
+    phase: str
+    message: str
+    has_high_risk: bool = False
