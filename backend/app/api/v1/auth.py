@@ -137,7 +137,12 @@ async def google_callback(
     Returns:
         RedirectResponse: Redirect to frontend with tokens or error
     """
-    frontend_callback_url = f"{settings.frontend_url}/auth/callback"
+    frontend_base = settings.frontend_url
+    if settings.frontend_urls:
+        primary = settings.frontend_urls.split(",")[0].strip()
+        if primary:
+            frontend_base = primary
+    frontend_callback_url = f"{frontend_base}/auth/callback"
 
     try:
         # Exchange authorization code for tokens and get user info

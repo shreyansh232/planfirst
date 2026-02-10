@@ -1,35 +1,18 @@
-"use client";
+import { Suspense } from "react";
+import { TripPageClient } from "./TripPageClient";
 
-import { useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import { ChatInterface } from "@/components/chat/ChatInterface";
-import { useProfile } from "@/lib/useProfile";
+export const dynamic = "force-dynamic";
 
 export default function TripPage() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const [prompt, setPrompt] = useState<string | null>(null);
-  const { user, loading, signOut } = useProfile();
-
-  useEffect(() => {
-    const initial = searchParams.get("prompt");
-    if (!initial || !initial.trim()) {
-      router.replace("/");
-      return;
-    }
-    setPrompt(initial.trim());
-  }, [router, searchParams]);
-
-  if (!prompt) return null;
-
   return (
-    <div className="h-screen overflow-hidden bg-white">
-      <ChatInterface
-        initialPrompt={prompt}
-        user={user}
-        loading={loading}
-        onSignOut={signOut}
-      />
-    </div>
+    <Suspense
+      fallback={
+        <div className="flex h-screen items-center justify-center bg-white">
+          <p className="text-slate-500">Loading...</p>
+        </div>
+      }
+    >
+      <TripPageClient />
+    </Suspense>
   );
 }
