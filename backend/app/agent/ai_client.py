@@ -13,7 +13,10 @@ from pydantic import BaseModel
 T = TypeVar("T", bound=BaseModel)
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
-DEFAULT_MODEL = "google/gemini-3-flash-preview"
+# Default: Gemini 3 Flash for the hackathon. Tool calling is disabled via fallback.
+DEFAULT_MODEL = os.environ.get(
+    "OPENROUTER_MODEL", "google/gemini-3-flash-preview"
+)
 
 
 class AIClient:
@@ -93,6 +96,17 @@ class AIClient:
         Returns:
             The final assistant response text.
         """
+        # Gemini 3 tool-calls via OpenRouter can error ("Thought signature not valid").
+        # Fallback to manual search query generation when tools are unsupported.
+        if "gemini-3" in self.model.lower():
+            return self._chat_with_tools_fallback(
+                messages=messages,
+                tool_executor=tool_executor,
+                temperature=temperature,
+                max_tool_calls=max_tool_calls,
+                on_tool_call=on_tool_call,
+            )
+
         messages = messages.copy()
         tool_calls_made = 0
 
@@ -150,6 +164,57 @@ class AIClient:
         if not response.choices:
             raise ValueError("Empty response from API — model returned no choices.")
         return response.choices[0].message.content or ""
+
+    def _chat_with_tools_fallback(
+        self,
+        messages: list[dict],
+        tool_executor: Callable[[str, dict[str, Any]], str],
+        temperature: float = 0.7,
+        max_tool_calls: int = 5,
+        on_tool_call: Optional[Callable[[str, dict], None]] = None,
+    ) -> str:
+        """Fallback path for models that do not support tool calls.
+
+        Asks the model for search queries, runs web_search directly, then
+        appends results and continues the chat without tools.
+        """
+        convo = "\n".join(
+            f"{m.get('role','user')}: {m.get('content','')}" for m in messages
+        )
+        query_prompt = f"""Given the conversation below, list up to {max_tool_calls} web search queries needed to answer accurately.
+One query per line. If no search is needed, respond with "NONE".
+
+Conversation:
+{convo}
+"""
+        query_text = self.chat(
+            [
+                {"role": "system", "content": "You generate search queries only."},
+                {"role": "user", "content": query_prompt},
+            ],
+            temperature=0.2,
+        )
+        raw_lines = [line.strip("•- \t") for line in query_text.splitlines()]
+        queries = [line for line in raw_lines if line and line.upper() != "NONE"]
+        queries = queries[:max_tool_calls]
+
+        results: list[str] = []
+        for query in queries:
+            if on_tool_call:
+                on_tool_call("web_search", {"query": query})
+            result = tool_executor("web_search", {"query": query})
+            results.append(result)
+
+        messages = messages.copy()
+        if results:
+            messages.append(
+                {
+                    "role": "system",
+                    "content": "Research results:\n" + "\n\n".join(results),
+                }
+            )
+
+        return self.chat(messages, temperature=temperature)
 
     def _build_example(self, schema: dict) -> dict:
         """Build a minimal example object from a JSON schema."""
