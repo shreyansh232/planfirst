@@ -1,6 +1,10 @@
 import { betterAuth } from "better-auth";
 
 export const auth = betterAuth({
+  secret:
+    process.env.BETTER_AUTH_SECRET ||
+    process.env.AUTH_SECRET ||
+    "dev-secret-change-me",
   // TODO: Configure database adapter for better-auth
   // For now, using memory adapter for development
   emailAndPassword: {
