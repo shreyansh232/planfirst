@@ -3,7 +3,7 @@
 import logging
 from typing import Callable, Optional
 
-from app.agent.ai_client import AIClient
+from app.agent.ai_client import AIClient, DEFAULT_MODEL
 from app.agent.models import ConversationState, Phase
 from app.agent.phases import (
     assumptions,
@@ -22,7 +22,7 @@ class TravelAgent:
     def __init__(
         self,
         api_key: Optional[str] = None,
-        model: str = "openai/gpt-4o-mini",
+        model: str = DEFAULT_MODEL,
         on_search: Optional[Callable[[str], None]] = None,
         on_status: Optional[Callable[[str], None]] = None,
     ):

@@ -13,7 +13,7 @@ from pydantic import BaseModel
 T = TypeVar("T", bound=BaseModel)
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
-DEFAULT_MODEL = "openai/gpt-4o-mini"
+DEFAULT_MODEL = "google/gemini-3-flash-preview"
 
 
 class AIClient:
