@@ -1,6 +1,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.engine.url import make_url
+import ssl
 from app.config import get_settings
 
 settings = get_settings()
@@ -16,7 +17,16 @@ try:
         query = dict(url_obj.query)
         sslmode = query.pop("sslmode", None)
         if sslmode and str(sslmode).lower() != "disable":
-            connect_args["ssl"] = True
+            mode = str(sslmode).lower()
+            if mode in {"require", "prefer", "allow"}:
+                # Match libpq sslmode=require (use SSL but do not verify cert)
+                context = ssl.create_default_context()
+                context.check_hostname = False
+                context.verify_mode = ssl.CERT_NONE
+                connect_args["ssl"] = context
+            else:
+                # verify-full / verify-ca -> default verification
+                connect_args["ssl"] = ssl.create_default_context()
         url_obj = url_obj.set(query=query)
         db_url = url_obj
 except Exception:
