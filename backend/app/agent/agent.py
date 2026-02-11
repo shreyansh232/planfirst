@@ -17,7 +17,7 @@ class TravelAgent:
         self,
         api_key: Optional[str] = None,
         model: str = DEFAULT_MODEL,
-        fast_model: str = FAST_MODEL,
+        fast_model: Optional[str] = FAST_MODEL,
         on_search: Optional[Callable[[str], None]] = None,
         on_status: Optional[Callable[[str], None]] = None,
     ):
@@ -29,7 +29,10 @@ class TravelAgent:
             on_search: Optional callback when a web search is performed.
         """
         self.client = AIClient(api_key=api_key, model=model)
-        self.fast_client = AIClient(api_key=api_key, model=fast_model)
+        self.fast_client = AIClient(
+            api_key=api_key,
+            model=fast_model or DEFAULT_MODEL,
+        )
         self.state = ConversationState()
         self.on_search = on_search
         self.search_results: list[str] = []  # Store search results for context

@@ -11,14 +11,15 @@ from typing import Any, Callable, Optional, Type, TypeVar
 from openai import OpenAI, RateLimitError
 from pydantic import BaseModel
 
+from app.config import get_settings
+
 T = TypeVar("T", bound=BaseModel)
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+settings = get_settings()
 # Default: Gemini 3 Flash for the hackathon. Tool calling is disabled via fallback.
-DEFAULT_MODEL = os.environ.get(
-    "OPENROUTER_MODEL", "google/gemini-3-flash-preview"
-)
-FAST_MODEL = os.environ.get("OPENROUTER_MODEL_FAST")
+DEFAULT_MODEL = os.environ.get("OPENROUTER_MODEL", settings.openrouter_model)
+FAST_MODEL = os.environ.get("OPENROUTER_MODEL_FAST", settings.openrouter_model_fast)
 
 
 class AIClient:
@@ -27,7 +28,7 @@ class AIClient:
     def __init__(
         self,
         api_key: Optional[str] = None,
-        model: str = DEFAULT_MODEL,
+        model: Optional[str] = DEFAULT_MODEL,
     ):
         """Initialize the client.
 
@@ -45,7 +46,7 @@ class AIClient:
             api_key=self.api_key,
             base_url=OPENROUTER_BASE_URL,
         )
-        self.model = model
+        self.model = model or DEFAULT_MODEL
 
     def _create_completion_with_retry(self, **kwargs):
         last_error: Exception | None = None
