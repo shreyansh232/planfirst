@@ -40,6 +40,8 @@ class Settings(BaseSettings):
     openrouter_api_key: Optional[str] = (
         None  # API key for OpenRouter (Optional allows app to start without it)
     )
+    openrouter_model: str = "google/gemini-3-flash-preview"
+    openrouter_model_fast: Optional[str] = "moonshotai/kimi-k2.5"
 
     # --- CORS ---
     # Comma-separated list of allowed origins. If unset, falls back to frontend_url.

@@ -114,10 +114,28 @@ async def google_login(request: Request) -> dict:
     Returns:
         dict: Contains 'authorization_url' and 'state' parameters
     """
-    # Generate redirect URI for callback (prefer explicit setting)
-    redirect_uri = settings.GOOGLE_REDIRECT_URI or request.url_for(
-        "google_callback"
-    )
+    # Prefer explicit redirect URI unless it points to localhost in a hosted env
+    redirect_uri = settings.GOOGLE_REDIRECT_URI
+    request_host = (request.url.hostname or "").lower()
+    is_local_host = request_host in {"localhost", "127.0.0.1"}
+    if redirect_uri:
+        redirect_uri_lower = redirect_uri.lower()
+        is_local_redirect = "localhost" in redirect_uri_lower or "127.0.0.1" in redirect_uri_lower
+    else:
+        is_local_redirect = True
+    if not redirect_uri or (is_local_redirect and not is_local_host):
+        redirect_uri = str(request.url_for("google_callback"))
+
+    # Capture frontend origin (from the client request) to use on callback
+    frontend_base = settings.frontend_url
+    if settings.frontend_urls:
+        primary = settings.frontend_urls.split(",")[0].strip()
+        if primary:
+            frontend_base = primary
+    origin = request.headers.get("origin")
+    if origin:
+        frontend_base = origin
+    request.session["frontend_base"] = frontend_base
 
     # Redirect to Google's authorization page
     return await oauth.google.authorize_redirect(request, redirect_uri)
@@ -139,8 +157,8 @@ async def google_callback(
     Returns:
         RedirectResponse: Redirect to frontend with tokens or error
     """
-    frontend_base = settings.frontend_url
-    if settings.frontend_urls:
+    frontend_base = request.session.get("frontend_base") or settings.frontend_url
+    if settings.frontend_urls and not request.session.get("frontend_base"):
         primary = settings.frontend_urls.split(",")[0].strip()
         if primary:
             frontend_base = primary
