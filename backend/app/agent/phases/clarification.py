@@ -4,7 +4,12 @@ import logging
 import re
 from typing import TYPE_CHECKING
 
-from app.agent.models import ConversationState, InitialExtraction, Phase, TravelConstraints
+from app.agent.models import (
+    ConversationState,
+    InitialExtraction,
+    Phase,
+    TravelConstraints,
+)
 from app.agent.prompts import get_phase_prompt
 from app.agent.sanitizer import sanitize_input, wrap_user_content
 
@@ -18,6 +23,7 @@ def handle_start(
     client: "AIClient",
     state: ConversationState,
     user_prompt: str,
+    language_code: str | None = None,
 ) -> tuple[str, InitialExtraction | None]:
     """Start a new travel planning conversation.
 
@@ -100,10 +106,14 @@ def handle_start(
 
     known_context = ""
     if known_parts:
-        known_context = "\n\nDetails already provided by the user:\n" + "\n".join(f"- {p}" for p in known_parts)
-        known_context += "\n\nDo NOT re-ask about these. Only ask about what's still missing."
+        known_context = "\n\nDetails already provided by the user:\n" + "\n".join(
+            f"- {p}" for p in known_parts
+        )
+        known_context += (
+            "\n\nDo NOT re-ask about these. Only ask about what's still missing."
+        )
 
-    system_prompt = get_phase_prompt("clarification")
+    system_prompt = get_phase_prompt("clarification", language_code)
     user_message = f"I want to plan a trip from {extracted.origin} to {extracted.destination}.{known_context}"
 
     state.add_message("system", system_prompt)
@@ -126,15 +136,11 @@ def _parse_origin_destination(text: str) -> tuple[str | None, str | None]:
     if origin_match:
         origin = origin_match.group(1).strip().strip(".")
 
-    destination_match = re.search(
-        r"(?:^|\\n)\\s*destination\\s*:\\s*(.+)", text, re.I
-    )
+    destination_match = re.search(r"(?:^|\\n)\\s*destination\\s*:\\s*(.+)", text, re.I)
     if destination_match:
         destination = destination_match.group(1).strip().strip(".")
 
-    from_to_match = re.search(
-        r"from\\s+([^\\n]+?)\\s+to\\s+([^\\n]+)", text, re.I
-    )
+    from_to_match = re.search(r"from\\s+([^\\n]+?)\\s+to\\s+([^\\n]+)", text, re.I)
     if from_to_match:
         origin = origin or from_to_match.group(1).strip().strip(".")
         destination = destination or from_to_match.group(2).strip().strip(".")
@@ -212,9 +218,7 @@ Merge all info together. The clarification answers take priority over initial me
         {"role": "user", "content": extraction_prompt},
     ]
 
-    constraints = client.chat_structured(
-        messages, TravelConstraints, temperature=0.1
-    )
+    constraints = client.chat_structured(messages, TravelConstraints, temperature=0.1)
     constraints.origin = state.origin
     constraints.destination = state.destination
     return constraints

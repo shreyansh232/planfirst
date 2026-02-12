@@ -1,11 +1,7 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { SidebarProvider } from "@/components/ui/sidebar";
 import "./globals.css";
-
-const inter = Inter({
-  variable: "--font-inter",
-  subsets: ["latin"],
-});
 
 export const metadata: Metadata = {
   title: "Plandrift",
@@ -19,8 +15,12 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${inter.variable} antialiased font-sans`}>
-        {children}
+      <body className="antialiased">
+        <TooltipProvider>
+          <SidebarProvider defaultOpen={false}>
+            {children}
+          </SidebarProvider>
+        </TooltipProvider>
       </body>
     </html>
   );

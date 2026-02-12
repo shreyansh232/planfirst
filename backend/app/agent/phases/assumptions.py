@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Callable
 from app.agent.formatters import format_constraints
 from app.agent.models import Assumptions, ConversationState
 from app.agent.prompts import get_phase_prompt
-from app.agent.sanitizer import  wrap_user_content
+from app.agent.sanitizer import wrap_user_content
 from app.agent.tools import TOOL_DEFINITIONS, execute_tool
 from app.agent.utils import get_current_date_context
 
@@ -19,17 +19,19 @@ logger = logging.getLogger(__name__)
 def generate_assumptions(
     client: "AIClient",
     state: ConversationState,
+    language_code: str | None = None,
 ) -> str:
     """Generate and present assumptions before planning.
 
     Args:
         client: AI client instance.
         state: Conversation state to update.
+        language_code: Optional user's preferred language code.
 
     Returns:
         Assumptions text for user confirmation.
     """
-    system_prompt = get_phase_prompt("assumptions")
+    system_prompt = get_phase_prompt("assumptions", language_code)
     constraints_text = format_constraints(state)
     risk_text = ""
     if state.risk_assessment:
@@ -46,9 +48,7 @@ List all assumptions explicitly."""
         {"role": "user", "content": user_message},
     ]
 
-    assumptions = client.chat_structured(
-        messages, Assumptions, temperature=0.3
-    )
+    assumptions = client.chat_structured(messages, Assumptions, temperature=0.3)
     state.assumptions = assumptions
 
     response = "**Here's what I'm going with:**\n\n"
@@ -133,6 +133,7 @@ def generate_assumptions_with_interests(
     state: ConversationState,
     interests: str,
     search_results: list[str],
+    language_code: str | None = None,
 ) -> str:
     """Generate assumptions incorporating user's stated interests.
 
@@ -141,11 +142,12 @@ def generate_assumptions_with_interests(
         state: Conversation state to update.
         interests: User's stated interests.
         search_results: List of previous search results.
+        language_code: Optional user's preferred language code.
 
     Returns:
         Assumptions text for user confirmation.
     """
-    system_prompt = get_phase_prompt("assumptions")
+    system_prompt = get_phase_prompt("assumptions", language_code)
     constraints_text = format_constraints(state)
     risk_text = ""
     if state.risk_assessment:
@@ -154,9 +156,7 @@ def generate_assumptions_with_interests(
     # Include search results for interests
     interest_research = ""
     if search_results:
-        interest_research = (
-            f"\n\nResearch on user interests:\n{search_results[-1]}"
-        )
+        interest_research = f"\n\nResearch on user interests:\n{search_results[-1]}"
 
     wrapped_interests = wrap_user_content(interests, "user_interests")
     user_message = f"""Based on these constraints and the user's specific interests, list the assumptions for planning:
@@ -176,9 +176,7 @@ List all assumptions explicitly."""
         {"role": "user", "content": user_message},
     ]
 
-    assumptions = client.chat_structured(
-        messages, Assumptions, temperature=0.3
-    )
+    assumptions = client.chat_structured(messages, Assumptions, temperature=0.3)
     state.assumptions = assumptions
 
     response = "**Updated — here's what I'm going with now:**\n\n"
@@ -201,6 +199,7 @@ def update_assumptions_with_interests(
     state: ConversationState,
     interests: str,
     search_results: list[str],
+    language_code: str | None = None,
 ) -> None:
     """Update assumptions incorporating user's modifications, without asking for confirmation.
 
@@ -212,8 +211,9 @@ def update_assumptions_with_interests(
         state: Conversation state to update.
         interests: User's stated interests / modifications.
         search_results: List of previous search results.
+        language_code: Optional user's preferred language code.
     """
-    system_prompt = get_phase_prompt("assumptions")
+    system_prompt = get_phase_prompt("assumptions", language_code)
     constraints_text = format_constraints(state)
     risk_text = ""
     if state.risk_assessment:
@@ -222,9 +222,7 @@ def update_assumptions_with_interests(
     # Include search results for interests
     interest_research = ""
     if search_results:
-        interest_research = (
-            f"\n\nResearch on user interests:\n{search_results[-1]}"
-        )
+        interest_research = f"\n\nResearch on user interests:\n{search_results[-1]}"
 
     wrapped_interests = wrap_user_content(interests, "user_interests")
     user_message = f"""Based on these constraints and the user's specific interests, list the assumptions for planning:
@@ -245,9 +243,7 @@ List all assumptions explicitly."""
         {"role": "user", "content": user_message},
     ]
 
-    assumptions = client.chat_structured(
-        messages, Assumptions, temperature=0.3
-    )
+    assumptions = client.chat_structured(messages, Assumptions, temperature=0.3)
     state.assumptions = assumptions
 
     # Log the updated assumptions for the conversation history

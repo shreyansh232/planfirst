@@ -1,17 +1,20 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { useRouter } from "next/navigation";
+import { ArrowUp, Sparkles, Loader2, Plane, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card } from "@/components/ui/card";
-import { UserMenu } from "@/components/layout/UserMenu";
 import {
   startTripStream,
   clarifyTripStream,
   proceedTripStream,
   confirmAssumptionsStream,
   refineTripStream,
+  getTripMessages,
+  getTrip,
   ApiError,
+  clearTokens,
 } from "@/lib/api";
 import type { AuthUser, StreamEvent, StreamMeta } from "@/lib/api";
 
@@ -27,22 +30,13 @@ interface Message {
 }
 
 interface ChatInterfaceProps {
-  initialPrompt: string;
+  initialPrompt?: string;
+  initialTripId?: string | null;
   user?: AuthUser | null;
   loading?: boolean;
   onSignOut?: () => void;
 }
 
-/**
- * What kind of input the UI is waiting for from the user.
- *
- *  text_input        – free-text (clarification answers / refinement)
- *  proceed_confirm   – proceed / reconsider buttons (high-risk feasibility)
- *  proceed_continue  – "continue" button (low-risk feasibility)
- *  assumptions_confirm – confirm / modify buttons
- *  modify_input      – free-text for assumption modifications
- *  done              – conversation complete, offer refinement
- */
 type NextAction =
   | "text_input"
   | "proceed_confirm"
@@ -56,11 +50,11 @@ type NextAction =
 // ---------------------------------------------------------------------------
 
 export function ChatInterface({
-  initialPrompt,
+  initialPrompt = "",
+  initialTripId = null,
   user,
-  loading,
-  onSignOut,
 }: ChatInterfaceProps) {
+  const router = useRouter();
   const idCounterRef = useRef(0);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -69,7 +63,6 @@ export function ChatInterface({
   const [tripId, setTripId] = useState<string | null>(null);
   const [nextAction, setNextAction] = useState<NextAction>("text_input");
   const [hasHighRisk, setHasHighRisk] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [restored, setRestored] = useState(false);
   const [streamingHasDelta, setStreamingHasDelta] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -79,7 +72,11 @@ export function ChatInterface({
   const actionInFlightRef = useRef(false);
   const initialMessageIdRef = useRef<string | null>(null);
   const pendingPromptRef = useRef(initialPrompt);
-  const storageKey = `plandrift_chat_${initialPrompt}`;
+  const storageKey = useMemo(() => {
+    if (tripId) return `plandrift_chat_trip_${tripId}`;
+    if (initialTripId) return `plandrift_chat_trip_${initialTripId}`;
+    return `plandrift_chat_prompt_${initialPrompt || "new"}`;
+  }, [initialPrompt, initialTripId, tripId]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -89,7 +86,6 @@ export function ChatInterface({
     scrollToBottom();
   }, [messages, isLoading]);
 
-  // Focus input when it becomes available
   useEffect(() => {
     if (!isLoading && nextAction === "text_input") {
       inputRef.current?.focus();
@@ -100,13 +96,31 @@ export function ChatInterface({
     pendingPromptRef.current = initialPrompt;
   }, [initialPrompt]);
 
+  // Reset state when navigating to a new trip (no initialTripId)
+  useEffect(() => {
+    if (!initialTripId) {
+      // Clear all state for new trip
+      setMessages([]);
+      setInput("");
+      setTripId(null);
+      setNextAction("text_input");
+      setHasHighRisk(false);
+      setRestored(true);
+      startedRef.current = false;
+      startInFlightRef.current = false;
+      actionInFlightRef.current = false;
+      initialMessageIdRef.current = null;
+      idCounterRef.current = 0;
+    }
+  }, [initialTripId]);
+
   // ---- helpers ----
 
   const renderBoldInline = (text: string) => {
     const parts = text.split("**");
     return parts.map((part, idx) =>
       idx % 2 === 1 ? (
-        <strong key={idx} className="font-semibold text-black">
+        <strong key={idx} className="font-semibold text-foreground">
           {part}
         </strong>
       ) : (
@@ -126,7 +140,7 @@ export function ChatInterface({
             href={part}
             target="_blank"
             rel="noreferrer"
-            className="text-slate-900 underline underline-offset-4"
+            className="text-accent underline underline-offset-2 hover:text-accent/80 transition-colors"
           >
             {part}
           </a>
@@ -139,7 +153,7 @@ export function ChatInterface({
   const renderFormatted = (text: string) => {
     const lines = text.split("\n");
     return (
-      <div className="space-y-2">
+      <div className="space-y-3">
         {lines.map((line, idx) => {
           const trimmed = line.trim();
           if (!trimmed) return <div key={idx} className="h-2" />;
@@ -152,15 +166,26 @@ export function ChatInterface({
             const bullet = trimmed.startsWith("→ ") ? "→" : "•";
             const content = trimmed.replace(/^•\s|^-\s|^→\s/, "");
             return (
-              <div key={idx} className="flex gap-2">
-                <span className="text-slate-400">{bullet}</span>
-                <span>{renderInline(content)}</span>
+              <div key={idx} className="flex gap-3 items-start">
+                <span className="text-accent mt-1.5">{bullet}</span>
+                <span className="text-foreground/90">{renderInline(content)}</span>
+              </div>
+            );
+          }
+
+          // Check for headers (lines ending with :)
+          if (trimmed.endsWith(":") && trimmed.length < 50) {
+            return (
+              <div key={idx} className="mt-4 first:mt-0">
+                <h4 className="font-semibold text-foreground font-display text-base">
+                  {trimmed}
+                </h4>
               </div>
             );
           }
 
           return (
-            <div key={idx} className="text-sm leading-relaxed">
+            <div key={idx} className="text-[15px] leading-relaxed text-foreground/80">
               {renderInline(trimmed)}
             </div>
           );
@@ -258,14 +283,19 @@ export function ChatInterface({
 
   const handleError = useCallback(
     (err: unknown) => {
+      if (err instanceof ApiError && err.status === 401) {
+        clearTokens();
+        router.push("/login");
+        return;
+      }
+      
       const message =
         err instanceof ApiError
           ? err.detail
           : "Something went wrong. Please try again.";
-      setError(message);
       addMessage("assistant", `Error: ${message}`);
     },
-    [addMessage],
+    [addMessage, router],
   );
 
   // ---- phase handlers ----
@@ -278,7 +308,6 @@ export function ChatInterface({
       startedRef.current = true;
       setIsLoading(true);
       setLoadingText("Starting your trip plan...");
-      setError(null);
 
       try {
         const prompt = (overridePrompt || initialPrompt).trim();
@@ -306,7 +335,6 @@ export function ChatInterface({
       actionInFlightRef.current = true;
       setIsLoading(true);
       setLoadingText("Analyzing feasibility...");
-      setError(null);
 
       try {
         const stream = await clarifyTripStream(tripId, answers);
@@ -321,7 +349,7 @@ export function ChatInterface({
         actionInFlightRef.current = false;
       }
     },
-    [tripId, nextAction, consumeStream, handleError],
+    [tripId, consumeStream, handleError],
   );
 
   const doProceed = useCallback(
@@ -340,7 +368,6 @@ export function ChatInterface({
       setLoadingText(
         proceed ? "Generating assumptions..." : "Processing...",
       );
-      setError(null);
 
       try {
         const stream = await proceedTripStream(tripId, proceed);
@@ -366,9 +393,8 @@ export function ChatInterface({
       actionInFlightRef.current = true;
       setIsLoading(true);
       setLoadingText(
-        "Researching prices and building your itinerary — this may take a minute...",
+        "Researching prices and building your itinerary...",
       );
-      setError(null);
 
       try {
         const stream = await confirmAssumptionsStream(
@@ -395,7 +421,6 @@ export function ChatInterface({
       actionInFlightRef.current = true;
       setIsLoading(true);
       setLoadingText("Refining your plan...");
-      setError(null);
 
       try {
         const stream = await refineTripStream(tripId, refinementType);
@@ -411,9 +436,10 @@ export function ChatInterface({
     [tripId, consumeStream, handleError],
   );
 
-  // ---- start on mount ----
+  // ---- load on mount ----
 
   useEffect(() => {
+    if (initialTripId) return;
     try {
       const raw = localStorage.getItem(storageKey);
       if (!raw) {
@@ -447,7 +473,93 @@ export function ChatInterface({
     } catch {
       setRestored(true);
     }
-  }, [storageKey]);
+  }, [initialTripId, storageKey]);
+
+  useEffect(() => {
+    if (!initialTripId) return;
+    let mounted = true;
+    (async () => {
+      try {
+        const [history, tripDetail] = await Promise.all([
+          getTripMessages(initialTripId),
+          getTrip(initialTripId),
+        ]);
+        if (!mounted) return;
+        setTripId(initialTripId);
+        
+        const mapped = history.map((msg, idx) => ({
+          id: msg.id || `${msg.created_at}-${idx}`,
+          role: msg.role as Message["role"],
+          content: msg.content,
+          phase: msg.phase ?? undefined,
+        }));
+        
+        if (mapped.length > 0) {
+          setMessages(mapped);
+        } else {
+          const storageKey = `plandrift_chat_trip_${initialTripId}`;
+          const stored = localStorage.getItem(storageKey);
+          if (stored) {
+            try {
+              const parsed = JSON.parse(stored) as {
+                messages?: Message[];
+              };
+              if (parsed.messages && parsed.messages.length > 0) {
+                setMessages(parsed.messages);
+              }
+            } catch {
+              // Ignore parse errors
+            }
+          }
+        }
+        
+        const phase = tripDetail.latest_version?.phase;
+        const risk = tripDetail.latest_version
+          ?.risk_assessment_json as Record<string, unknown> | null;
+        if (phase === "feasibility") {
+          const overall = risk?.overall_feasible;
+          const highRisk = overall === false;
+          setHasHighRisk(highRisk);
+          setNextAction(highRisk ? "proceed_confirm" : "proceed_continue");
+        } else if (phase === "assumptions") {
+          setNextAction("assumptions_confirm");
+        } else if (phase === "planning" || phase === "refinement") {
+          setNextAction("done");
+        } else {
+          setNextAction("text_input");
+        }
+        startedRef.current = true;
+        setRestored(true);
+      } catch (err) {
+        if (!mounted) return;
+        
+        if (err instanceof ApiError && err.status === 401) {
+          clearTokens();
+          router.push("/login");
+          return;
+        }
+        
+        const storageKey = `plandrift_chat_trip_${initialTripId}`;
+        const stored = localStorage.getItem(storageKey);
+        if (stored) {
+          try {
+            const parsed = JSON.parse(stored) as {
+              messages?: Message[];
+            };
+            if (parsed.messages && parsed.messages.length > 0) {
+              setMessages(parsed.messages);
+            }
+          } catch {
+            // Ignore parse errors
+          }
+        }
+        setRestored(true);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [initialTripId]);
 
   useEffect(() => {
     if (!restored) return;
@@ -465,24 +577,9 @@ export function ChatInterface({
       hasHighRisk,
     });
     localStorage.setItem(storageKey, payload);
-    if (!tripId && messages.length) {
-      const userText = messages
-        .filter((msg) => msg.role === "user")
-        .map((msg) => msg.content)
-        .join("\n");
-      if (userText.trim()) {
-        pendingPromptRef.current = userText.trim();
-      }
-    }
   }, [messages, tripId, nextAction, hasHighRisk, storageKey]);
 
-  useEffect(() => {
-    return () => {
-      localStorage.removeItem(storageKey);
-    };
-  }, [storageKey]);
-
-  // ---- form submission (routes to correct phase handler) ----
+  // ---- form submission ----
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -494,7 +591,6 @@ export function ChatInterface({
 
     switch (nextAction) {
       case "text_input":
-        // During clarification or general text input
         if (!tripId) {
           const basePrompt = pendingPromptRef.current || initialPrompt;
           const lastAssistant = [...messages]
@@ -537,11 +633,9 @@ export function ChatInterface({
         }
         break;
       case "modify_input":
-        // User is providing modifications to assumptions
         await doConfirmAssumptions(false, text);
         break;
       case "done":
-        // User is requesting a refinement
         await doRefine(text);
         break;
       default:
@@ -563,22 +657,24 @@ export function ChatInterface({
   }, [messages]);
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden bg-white">
-      {/* Header */}
-      <div className="border-b border-black/10 bg-white/80 backdrop-blur">
-        <div className="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
-          <a href="/" className="text-lg font-semibold tracking-tight">
-            Plandrift
-          </a>
-          {onSignOut && (
-            <UserMenu user={user || null} loading={loading} onSignOut={onSignOut} />
-          )}
-        </div>
-      </div>
-
-      {/* Messages */}
-      <div className="flex-1 min-h-0 overflow-y-auto px-6 py-8">
+    <div className="flex flex-col h-full overflow-hidden bg-[#FAFAF8]">
+      {/* Messages Area */}
+      <div className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-6 py-8">
         <div className="max-w-3xl mx-auto space-y-6">
+          {displayMessages.length === 0 && !isLoading && (
+            <div className="flex flex-col items-center justify-center py-20 text-center">
+              <div className="w-16 h-16 rounded-2xl bg-accent/10 flex items-center justify-center mb-6">
+                <Sparkles className="w-8 h-8 text-accent" />
+              </div>
+              <h3 className="text-xl font-display text-foreground mb-2">
+                Start Planning Your Trip
+              </h3>
+              <p className="text-muted-foreground max-w-sm">
+                Describe your dream destination and we&apos;ll help you plan the perfect itinerary.
+              </p>
+            </div>
+          )}
+
           {displayMessages.map((message, index) => (
             <div
               key={`${message.id}-${index}`}
@@ -587,68 +683,86 @@ export function ChatInterface({
               }`}
             >
               {message.role === "assistant" && !message.content ? null : (
-              <div className="flex items-start gap-3 max-w-[92%]">
-                {message.role !== "user" && (
-                  <div className="mt-1 size-8 shrink-0 rounded-full border border-black/10 bg-white flex items-center justify-center text-xs font-semibold text-black">
-                    PD
+                <div className={`flex items-start gap-3 max-w-[90%] ${
+                  message.role === "user" ? "flex-row-reverse" : ""
+                }`}>
+                  {/* Avatar */}
+                  {message.role === "user" ? (
+                    <div className="mt-0.5 shrink-0 w-8 h-8 rounded-full overflow-hidden bg-accent border-2 border-accent">
+                      {user?.picture_url ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={user.picture_url}
+                          alt={user.name || user.email}
+                          className="w-full h-full object-cover"
+                          referrerPolicy="no-referrer"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-white text-xs font-semibold">
+                          {(user?.name?.[0] || user?.email?.[0] || "U").toUpperCase()}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="mt-0.5 shrink-0 w-8 h-8 rounded-full bg-accent flex items-center justify-center text-white text-xs font-semibold">
+                      AI
+                    </div>
+                  )}
+
+                  {/* Message Bubble */}
+                  <div className={`
+                    rounded-2xl px-5 py-4 shadow-sm
+                    ${message.role === "user"
+                      ? "bg-accent text-white rounded-br-md"
+                      : "bg-white border border-border/20 text-foreground rounded-bl-md"
+                    }
+                  `}>
+                    {message.role === "assistant" ? (
+                      renderFormatted(message.content)
+                    ) : (
+                      <p className="text-[15px] leading-relaxed">{message.content}</p>
+                    )}
                   </div>
-                )}
-                <Card
-                  className={`p-4 shadow-sm ${
-                    message.role === "user"
-                      ? "bg-black text-white border border-black"
-                      : "bg-white text-black border border-black/10"
-                  }`}
-                >
-                  <div className="whitespace-pre-wrap text-sm leading-relaxed">
-                    {message.role === "assistant"
-                      ? renderFormatted(message.content)
-                      : message.content}
-                  </div>
-                </Card>
-              </div>
+                </div>
               )}
             </div>
           ))}
 
+          {/* Action Cards */}
           {!isLoading && nextAction === "proceed_continue" && (
-            <div className="flex justify-start">
-              <div className="flex items-start gap-3 max-w-[92%]">
-                <div className="mt-1 size-8 shrink-0 rounded-full border border-black/10 bg-white flex items-center justify-center text-xs font-semibold text-black">
-                  PD
+            <div className="flex justify-start pl-11">
+              <div className="bg-white rounded-2xl border border-border/30 shadow-sm p-5 max-w-md">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-10 h-10 rounded-xl bg-green-50 flex items-center justify-center">
+                    <Plane className="w-5 h-5 text-green-600" />
+                  </div>
+                  <div>
+                    <h4 className="font-semibold text-foreground">Ready to move forward?</h4>
+                    <p className="text-sm text-muted-foreground">Your trip looks feasible!</p>
+                  </div>
                 </div>
-                <Card className="p-4 shadow-sm bg-white text-black border border-black/10">
-                  <div className="text-sm text-slate-600">
-                    Ready to move forward?
-                  </div>
-                  <div className="mt-3">
-                  <Button
-                    onClick={() => {
-                      addMessage("user", "Looks good, continue!");
-                      setNextAction("text_input");
-                      doProceed(true, true);
-                    }}
-                    disabled={isLoading}
-                    className="rounded-full bg-black text-white hover:bg-black/90"
-                  >
-                    Continue to Planning
-                  </Button>
-                  </div>
-                </Card>
+                <Button
+                  onClick={() => {
+                    addMessage("user", "Looks good, continue!");
+                    setNextAction("text_input");
+                    doProceed(true, true);
+                  }}
+                  className="w-full bg-accent hover:bg-accent/90 text-white rounded-xl"
+                >
+                  Continue to Planning
+                </Button>
               </div>
             </div>
           )}
 
-          {/* Loading indicator */}
+          {/* Loading Indicator */}
           {isLoading && !streamingHasDelta && (
-            <div className="flex justify-start">
-              <div className="flex items-start gap-3 max-w-[92%]">
-                <div className="mt-1 size-8 shrink-0 rounded-full border border-black/10 bg-white flex items-center justify-center text-xs font-semibold text-black">
-                  PD
+            <div className="flex justify-start pl-11">
+              <div className="flex items-center gap-3 bg-white rounded-2xl border border-border/30 shadow-sm px-5 py-4">
+                <div className="w-8 h-8 rounded-full bg-accent/10 flex items-center justify-center">
+                  <Loader2 className="w-4 h-4 text-accent animate-spin" />
                 </div>
-                <Card className="bg-white border border-black/10 p-4 shadow-sm">
-                  <p className="text-xs text-slate-600">{loadingText}</p>
-                </Card>
+                <p className="text-sm text-muted-foreground">{loadingText}</p>
               </div>
             </div>
           )}
@@ -657,120 +771,149 @@ export function ChatInterface({
         </div>
       </div>
 
-      {/* Error banner */}
-      {/* Action bar — adapts to current phase */}
-      <div className="bg-white border-t border-black/10 px-6 py-4">
+      {/* Input Area */}
+      <div className="bg-white border-t border-border/20 px-4 sm:px-6 py-5">
         <div className="max-w-3xl mx-auto">
           {isLoading ? (
-            // Disabled input while loading
-            <div className="flex gap-2 items-center">
-              <Input
-                disabled
-                placeholder="Waiting for response..."
-                className="flex-1 bg-white border-black/10 text-black opacity-50 rounded-full"
-              />
-              <Button disabled>Send</Button>
+            <div className="relative">
+              <div className="relative flex items-center">
+                <div className="w-full h-14 pl-6 pr-14 rounded-full bg-muted/50 flex items-center">
+                  <span className="text-muted-foreground text-sm">Waiting for response...</span>
+                </div>
+                <div className="absolute right-2 w-10 h-10 rounded-full bg-muted flex items-center justify-center">
+                  <ArrowUp className="w-5 h-5 text-muted-foreground" />
+                </div>
+              </div>
             </div>
           ) : nextAction === "text_input" || nextAction === "modify_input" ? (
-            // Free-text input (clarification, modifications, refinements)
-            <form onSubmit={handleSubmit} className="flex gap-2">
-              <Input
-                ref={inputRef}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                placeholder={
-                  nextAction === "modify_input"
-                    ? "Describe what you'd like to change..."
-                    : "Type your response..."
-                }
-                className="flex-1 bg-white border-black/10 text-black rounded-full"
-              />
-              <Button
-                type="submit"
-                disabled={!input.trim()}
-                className="rounded-full bg-black text-white hover:bg-black/90"
-              >
-                Send
-              </Button>
-              {nextAction === "modify_input" && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setNextAction("assumptions_confirm")}
-                >
-                  Cancel
-                </Button>
-              )}
-            </form>
-          ) : nextAction === "proceed_confirm" ? (
-            // High-risk feasibility — proceed or reconsider
-            <div className="flex gap-3 justify-center">
-              <Button
-                onClick={() => {
-                  addMessage("user", "Let's proceed anyway.");
-                  doProceed(true);
-                }}
-                disabled={isLoading}
-              >
-                Proceed Anyway
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  addMessage("user", "Let me reconsider.");
-                  doProceed(false);
-                }}
-                disabled={isLoading}
-              >
-                Reconsider
-              </Button>
-            </div>
-          ) : nextAction === "assumptions_confirm" ? (
-            // Confirm or modify assumptions
-            <div className="flex gap-3 justify-center">
-              <Button
-                onClick={() => {
-                  addMessage("user", "Looks good — go ahead and plan!");
-                  doConfirmAssumptions(true);
-                }}
-                disabled={isLoading}
-              >
-                Looks Good, Plan It!
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => setNextAction("modify_input")}
-                disabled={isLoading}
-              >
-                I Want Changes
-              </Button>
-            </div>
-          ) : nextAction === "done" ? (
-            // Plan ready — refinement or finish
-            <form onSubmit={handleSubmit} className="space-y-2">
-              <div className="flex gap-2">
+            <form onSubmit={handleSubmit} className="relative">
+              <div className="relative flex items-center">
                 <Input
                   ref={inputRef}
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
-                  placeholder="Request a change, e.g. 'make it cheaper' or 'add more hiking'..."
-                  className="flex-1 bg-white border-black/10 text-black rounded-full"
+                  placeholder={
+                    nextAction === "modify_input"
+                      ? "Describe what you'd like to change..."
+                      : "Type your message..."
+                  }
+                  className="w-full h-14 pl-6 pr-14 rounded-full bg-muted/30 border focus:bg-white focus:ring-2 focus:ring-accent/20 transition-all text-[15px]"
                 />
-                <Button
+                <button
                   type="submit"
-                  disabled={!input.trim()}
-                  className="rounded-full bg-black text-white hover:bg-black/90"
+                  disabled={!input.trim() || isLoading}
+                  className="absolute right-2 w-10 h-10 rounded-full bg-accent text-white flex items-center justify-center hover:bg-accent/90 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
                 >
-                  Refine
-                </Button>
+                  <ArrowUp className="w-5 h-5" />
+                </button>
               </div>
-              <p className="text-xs text-slate-600 text-center">
-                Happy with your plan? You can continue refining anytime.
-              </p>
+              {nextAction === "modify_input" && (
+                <div className="flex justify-center mt-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setNextAction("assumptions_confirm")}
+                    className="h-10 px-4 rounded-full"
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              )}
             </form>
+          ) : nextAction === "proceed_confirm" ? (
+            <div className="flex gap-3 justify-center">
+              <div className="bg-amber-50 rounded-xl p-4 flex items-center gap-4">
+                <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center">
+                  <AlertTriangle className="w-5 h-5 text-amber-600" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-amber-900">This trip has some risks</p>
+                  <p className="text-xs text-amber-700">Review before proceeding</p>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      addMessage("user", "Let me reconsider.");
+                      doProceed(false);
+                    }}
+                    className="rounded-xl"
+                  >
+                    Reconsider
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      addMessage("user", "Let's proceed anyway.");
+                      doProceed(true);
+                    }}
+                    className="rounded-xl bg-accent hover:bg-accent/90"
+                  >
+                    Proceed
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ) : nextAction === "assumptions_confirm" ? (
+            <div className="flex gap-3 justify-center">
+              <div className="bg-white rounded-2xl border border-border/30 shadow-sm p-5 max-w-lg w-full">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-10 h-10 rounded-xl bg-accent/10 flex items-center justify-center">
+                    <Sparkles className="w-5 h-5 text-accent" />
+                  </div>
+                  <div>
+                    <h4 className="font-semibold text-foreground">Review Assumptions</h4>
+                    <p className="text-sm text-muted-foreground">Everything look correct?</p>
+                  </div>
+                </div>
+                <div className="flex gap-3">
+                  <Button
+                    onClick={() => {
+                      addMessage("user", "Looks good — go ahead and plan!");
+                      doConfirmAssumptions(true);
+                    }}
+                    className="flex-1 rounded-xl bg-accent hover:bg-accent/90 text-white"
+                  >
+                    Continue
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => setNextAction("modify_input")}
+                    className="flex-1 rounded-xl hover:bg-accent hover:text-white hover:border-accent transition-all"
+                  >
+                    Make Changes
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ) : nextAction === "done" ? (
+            <div className="space-y-4">
+              <form onSubmit={handleSubmit} className="relative">
+                <div className="relative flex items-center">
+                  <Input
+                    ref={inputRef}
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    placeholder="Request changes like 'add more hiking' or 'make it cheaper'..."
+                    className="w-full h-14 pl-6 pr-14 rounded-full bg-muted/30 border focus:bg-white focus:ring-2 focus:ring-accent/20 transition-all text-[15px]"
+                  />
+                  <button
+                    type="submit"
+                    disabled={!input.trim() || isLoading}
+                    className="absolute right-2 w-10 h-10 rounded-full bg-accent text-white flex items-center justify-center hover:bg-accent/90 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                  >
+                    <ArrowUp className="w-5 h-5" />
+                  </button>
+                </div>
+              </form>
+              <p className="text-xs text-muted-foreground text-center">
+                Your trip plan is ready! Continue refining or start a new plan.
+              </p>
+            </div>
           ) : null}
         </div>
       </div>
     </div>
   );
 }
+
+

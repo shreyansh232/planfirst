@@ -39,8 +39,7 @@ export function UserMenu({ user, loading, onSignOut }: UserMenuProps) {
     return (
       <Link href="/login">
         <Button
-          variant="outline"
-          className="border-black/20"
+          className="text-sm font-medium bg-primary text-primary-foreground px-5 py-2 rounded-full hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-100"
           disabled={loading}
         >
           Sign in
@@ -53,11 +52,11 @@ export function UserMenu({ user, loading, onSignOut }: UserMenuProps) {
   const showImage = !!user.picture_url && !imageError;
 
   return (
-    <div className="relative" ref={wrapperRef}>
+    <div className="relative flex justify-center" ref={wrapperRef}>
       <button
         type="button"
         onClick={() => setOpen((prev) => !prev)}
-        className="size-9 rounded-full border border-black/10 overflow-hidden bg-white flex items-center justify-center text-xs font-semibold text-black"
+        className="size-10 rounded-full border border-black/10 overflow-hidden bg-white flex items-center justify-center text-xs font-semibold text-black shrink-0 shadow-sm hover:shadow-md transition-all cursor-pointer"
       >
         {showImage ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -73,15 +72,18 @@ export function UserMenu({ user, loading, onSignOut }: UserMenuProps) {
         )}
       </button>
       {open && (
-        <div className="absolute right-0 mt-2 w-40 rounded-xl border border-black/10 bg-white shadow-lg">
+        <div className="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-32 rounded-xl border border-border/50 bg-white shadow-lg overflow-hidden">
           <button
             type="button"
             onClick={() => {
               setOpen(false);
               onSignOut();
             }}
-            className="w-full px-4 py-2 text-left text-sm text-black hover:bg-slate-50"
+            className="w-full px-4 py-2.5 text-left text-sm text-foreground hover:bg-muted transition-colors flex items-center gap-2 cursor-pointer"
           >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+            </svg>
             Sign out
           </button>
         </div>
