@@ -1,8 +1,8 @@
-# Plandrift
+# Planfirst
 
 A constraint-first travel planning agent powered by AI with real-time web search. Built for web and extensible for CLI.
 
-Unlike typical travel planners that immediately generate generic itineraries, Plandrift **thinks before planning** by following a strict agentic workflow.
+Unlike typical travel planners that immediately generate generic itineraries, Planfirst **thinks before planning** by following a strict agentic workflow.
 
 ## 🚀 The Multi-Phase Workflow
 
@@ -163,7 +163,7 @@ uv run python scripts/test_agent.py
 
 ## 🔐 Authentication
 
-Plandrift supports two authentication methods:
+Planfirst supports two authentication methods:
 
 1. **Email/Password**: Traditional registration and login with JWT tokens
 2. **Google OAuth**: Sign in with Google account

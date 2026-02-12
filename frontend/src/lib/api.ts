@@ -1,5 +1,5 @@
 /**
- * Plandrift API client.
+ * Planfirst API client.
  *
  * Handles authentication (JWT token management) and all trip-planning
  * endpoints.  Tokens are stored in localStorage so they survive page

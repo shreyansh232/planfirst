@@ -1,6 +1,6 @@
 # AGENTS.md - Development Guide for Agentic Coding Agents
 
-This document provides essential information for agentic coding agents working with the Plandrift codebase. It covers build/lint/test commands, code style guidelines, and development workflows.
+This document provides essential information for agentic coding agents working with the Planfirst codebase. It covers build/lint/test commands, code style guidelines, and development workflows.
 
 ## Codebase Structure
 
