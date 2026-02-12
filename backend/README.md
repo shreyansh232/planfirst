@@ -1,6 +1,6 @@
-# Plandrift Backend
+# Planfirst Backend
 
-FastAPI backend for the Plandrift travel planning application.
+FastAPI backend for the Planfirst travel planning application.
 
 ## 🛠️ Tech Stack
 

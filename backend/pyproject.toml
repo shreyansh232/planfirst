@@ -1,7 +1,7 @@
 [project]
 name = "plandrift-backend"
 version = "0.1.0"
-description = "Plandrift API - Constraint-first travel planning backend"
+description = "Planfirst API - Constraint-first travel planning backend"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

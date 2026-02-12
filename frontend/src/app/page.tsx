@@ -193,8 +193,8 @@ const Home = () => {
 
           {/* Footer */}
           <footer className="py-12 border-t border-border flex items-center justify-between text-sm text-muted-foreground">
-            <span className="font-display text-foreground">Plandrift</span>
-            <span>© {new Date().getFullYear()} Plandrift. All rights reserved.</span>
+            <span className="font-display text-foreground">Planfirst</span>
+            <span>© {new Date().getFullYear()} Planfirst. All rights reserved.</span>
           </footer>
         </main>
       </SidebarInset>

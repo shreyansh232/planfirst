@@ -96,7 +96,7 @@ export default function LoginPage() {
           >
             <div className="text-center mb-10">
               <h1 className="text-3xl sm:text-4xl mb-3 font-display text-foreground">
-                Welcome to Plandrift
+                Welcome to Planfirst
               </h1>
               <p className="text-muted-foreground">
                 Sign in to start planning your next journey.

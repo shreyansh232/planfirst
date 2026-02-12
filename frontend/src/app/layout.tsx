@@ -4,7 +4,7 @@ import { SidebarProvider } from "@/components/ui/sidebar";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Plandrift",
+  title: "Planfirst",
   description: "Plan better trips, faster.",
 };
 

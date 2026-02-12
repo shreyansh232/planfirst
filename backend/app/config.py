@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     """Application settings using Pydantic Settings."""
 
     # --- Core Application Settings ---
-    app_name: str = "Plandrift API"  # Name used in OpenAPI docs
+    app_name: str = "Planfirst API"  # Name used in OpenAPI docs
     api_v1_str: str = "/api"  # API prefix
     debug: bool = False  # If True, enables debug logs/SQL echo
 
@@ -26,9 +26,7 @@ class Settings(BaseSettings):
     # Google auth
     GOOGLE_CLIENT_ID: Optional[str] = None
     GOOGLE_CLIENT_SECRET: Optional[str] = None
-    GOOGLE_REDIRECT_URI: str = (
-        "http://localhost:8000/api/auth/google/callback"
-    )
+    GOOGLE_REDIRECT_URI: str = "http://localhost:8000/api/auth/google/callback"
 
     # --- Database ---
     # Default connection string. It will be overwritten by DATABASE_URL in .env
