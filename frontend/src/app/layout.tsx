@@ -6,9 +6,11 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Planfirst",
   description: "Plan better trips, faster.",
+  metadataBase: new URL("https://planfirst.vercel.app"),
   openGraph: {
     title: "Planfirst",
     description: "Plan better trips, faster.",
+    type: "website",
     images: [
       {
         url: "/og.png",
