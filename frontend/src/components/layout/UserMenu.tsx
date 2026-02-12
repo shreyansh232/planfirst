@@ -72,14 +72,14 @@ export function UserMenu({ user, loading, onSignOut }: UserMenuProps) {
         )}
       </button>
       {open && (
-        <div className="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-32 rounded-xl border border-border/50 bg-white shadow-lg overflow-hidden">
+        <div className="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-24 rounded-xl border border-border/50 bg-white shadow-lg overflow-hidden">
           <button
             type="button"
             onClick={() => {
               setOpen(false);
               onSignOut();
             }}
-            className="w-full px-4 py-2.5 text-left text-sm text-foreground hover:bg-muted transition-colors flex items-center gap-2 cursor-pointer"
+            className="w-full px-2 py-2.5 text-left text-sm text-foreground hover:bg-muted transition-colors flex items-center gap-2 cursor-pointer"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />

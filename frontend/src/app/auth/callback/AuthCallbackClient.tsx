@@ -1,24 +1,17 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { setTokens } from "@/lib/api";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Loader2 } from "lucide-react";
 
 export function AuthCallbackClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [error, setError] = useState<string | null>(null);
 
-  const queryError = useMemo(() => {
+  const error = useMemo(() => {
     const err = searchParams.get("error");
     const message = searchParams.get("message");
     if (!err) return null;
@@ -26,10 +19,7 @@ export function AuthCallbackClient() {
   }, [searchParams]);
 
   useEffect(() => {
-    if (queryError) {
-      setError(queryError);
-      return;
-    }
+    if (error) return;
 
     if (typeof window === "undefined") return;
     const hash = window.location.hash.replace(/^#/, "");
@@ -38,40 +28,37 @@ export function AuthCallbackClient() {
     const refreshToken = params.get("refresh_token");
 
     if (!accessToken || !refreshToken) {
-      setError("Missing tokens from Google sign-in. Please try again.");
       return;
     }
 
     setTokens(accessToken, refreshToken);
     router.replace("/");
-  }, [queryError, router]);
+  }, [error, router]);
 
+  // Error state - show centered error message
+  if (error) {
+    return (
+      <div className="min-h-screen w-full flex flex-col items-center justify-center bg-[#FAFAF8] px-6">
+        <div className="text-center space-y-4 max-w-sm">
+          <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mx-auto">
+            <span className="text-red-600 text-xl">!</span>
+          </div>
+          <h1 className="text-xl font-semibold text-slate-900">Sign in failed</h1>
+          <p className="text-sm text-slate-600">{error}</p>
+          <Link href="/login">
+            <Button className="mt-4 bg-slate-900 text-white hover:bg-slate-800">
+              Try again
+            </Button>
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  // Loading state - minimal centered spinner
   return (
-    <div className="min-h-screen flex items-center justify-center bg-white px-6">
-      <Card className="w-full max-w-md border-black/10 shadow-sm">
-        <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl font-bold text-black">
-            Finishing sign-in
-          </CardTitle>
-          <CardDescription className="text-slate-600">
-            We&apos;re wrapping things up.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {error ? (
-            <>
-              <p className="text-sm text-red-600">{error}</p>
-              <Link href="/login">
-                <Button className="w-full bg-black text-white hover:bg-black/90">
-                  Try again
-                </Button>
-              </Link>
-            </>
-          ) : (
-            <p className="text-sm text-slate-600">Redirecting to home...</p>
-          )}
-        </CardContent>
-      </Card>
+    <div className="min-h-screen w-full flex flex-col items-center justify-center bg-[#FAFAF8]">
+      <Loader2 className="w-8 h-8 text-slate-400 animate-spin" />
     </div>
   );
 }
