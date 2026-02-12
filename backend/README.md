@@ -18,7 +18,7 @@ FastAPI backend for the Planfirst travel planning application.
 Create a `.env` file in this directory (or symlink to the root `.env`):
 
 ```env
-DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5433/plandrift
+DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5433/planfirst
 SECRET_KEY=your-random-secret-key
 ALGORITHM=HS256
 OPENROUTER_API_KEY=sk-or-...

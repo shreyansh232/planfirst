@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     # --- Database ---
     # Default connection string. It will be overwritten by DATABASE_URL in .env
     database_url: str = (
-        "postgresql+asyncpg://postgres:postgres@localhost:5433/plandrift"
+        "postgresql+asyncpg://postgres:postgres@localhost:5433/planfirst"
     )
 
     # --- External APIs ---

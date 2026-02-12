@@ -18,8 +18,8 @@ export function getGoogleLoginUrl(): string {
 // Token helpers
 // ---------------------------------------------------------------------------
 
-const TOKEN_KEY = "plandrift_access_token";
-const REFRESH_KEY = "plandrift_refresh_token";
+const TOKEN_KEY = "planfirst_access_token";
+const REFRESH_KEY = "planfirst_refresh_token";
 
 export function getAccessToken(): string | null {
   if (typeof window === "undefined") return null;

@@ -4,6 +4,7 @@ Uses OpenRouter as the provider, which is OpenAI-compatible.
 """
 
 import json
+import logging
 import os
 import time
 from typing import Any, Callable, Optional, Type, TypeVar
@@ -12,6 +13,8 @@ from openai import OpenAI, RateLimitError
 from pydantic import BaseModel
 
 from app.config import get_settings
+
+logger = logging.getLogger(__name__)
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -96,7 +99,7 @@ class AIClient:
         tools: list[dict],
         tool_executor: Callable[[str, dict[str, Any]], str],
         temperature: float = 0.7,
-        max_tool_calls: int = 5,
+        max_tool_calls: int = 2,
         on_tool_call: Optional[Callable[[str, dict], None]] = None,
     ) -> str:
         """Send a chat request with tool support, automatically executing tools.
@@ -154,6 +157,9 @@ class AIClient:
                 except json.JSONDecodeError:
                     arguments = {}
 
+                # Log the tool call
+                logger.info(f"[AI TOOL CALL] {tool_name}: {arguments}")
+
                 # Notify UI if callback provided
                 if on_tool_call:
                     on_tool_call(tool_name, arguments)
@@ -186,7 +192,7 @@ class AIClient:
         messages: list[dict],
         tool_executor: Callable[[str, dict[str, Any]], str],
         temperature: float = 0.7,
-        max_tool_calls: int = 5,
+        max_tool_calls: int = 2,
         on_tool_call: Optional[Callable[[str, dict], None]] = None,
     ) -> str:
         """Fallback path for models that do not support tool calls.
@@ -195,7 +201,7 @@ class AIClient:
         appends results and continues the chat without tools.
         """
         convo = "\n".join(
-            f"{m.get('role','user')}: {m.get('content','')}" for m in messages
+            f"{m.get('role', 'user')}: {m.get('content', '')}" for m in messages
         )
         query_prompt = f"""Given the conversation below, list up to {max_tool_calls} web search queries needed to answer accurately.
 One query per line. If no search is needed, respond with "NONE".
@@ -214,8 +220,11 @@ Conversation:
         queries = [line for line in raw_lines if line and line.upper() != "NONE"]
         queries = queries[:max_tool_calls]
 
+        logger.info(f"[AI FALLBACK] Generated {len(queries)} search queries: {queries}")
+
         results: list[str] = []
         for query in queries:
+            logger.info(f"[AI FALLBACK] Executing search: {query}")
             if on_tool_call:
                 on_tool_call("web_search", {"query": query})
             result = tool_executor("web_search", {"query": query})
@@ -332,10 +341,12 @@ Conversation:
         )
 
         augmented_messages = messages.copy()
-        augmented_messages.append({
-            "role": "user",
-            "content": schema_instruction,
-        })
+        augmented_messages.append(
+            {
+                "role": "user",
+                "content": schema_instruction,
+            }
+        )
 
         last_error: Optional[Exception] = None
         for attempt in range(1 + max_retries):
@@ -370,14 +381,18 @@ Conversation:
                         "- Follow the exact structure from the schema.\n\n"
                         "Return ONLY the corrected JSON object."
                     )
-                    augmented_messages.append({
-                        "role": "assistant",
-                        "content": content,
-                    })
-                    augmented_messages.append({
-                        "role": "user",
-                        "content": error_feedback,
-                    })
+                    augmented_messages.append(
+                        {
+                            "role": "assistant",
+                            "content": content,
+                        }
+                    )
+                    augmented_messages.append(
+                        {
+                            "role": "user",
+                            "content": error_feedback,
+                        }
+                    )
 
         raise ValueError(
             f"Failed to parse structured response after {1 + max_retries} "

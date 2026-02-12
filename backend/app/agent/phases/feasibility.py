@@ -64,6 +64,7 @@ Use the web_search tool to gather this information, then provide your risk asses
         tools=TOOL_DEFINITIONS,
         tool_executor=execute_tool,
         temperature=0.3,
+        max_tool_calls=2,
         on_tool_call=on_tool_call,
     )
 

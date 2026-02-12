@@ -1,12 +1,12 @@
 services:
   db:
     image: postgres:16
-    container_name: plandrift-db
+    container_name: planfirst-db
     restart: always
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=plandrift
+      - POSTGRES_DB=planfirst
     ports:
       - "5433:5432"
     volumes:
@@ -14,10 +14,10 @@ services:
   backend:
     build:
       context: ./backend
-    container_name: plandrift-backend
+    container_name: planfirst-backend
     restart: unless-stopped
     environment:
-      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/plandrift
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/planfirst
       - FRONTEND_URLS=http://localhost:3000
       - GOOGLE_REDIRECT_URI=http://localhost:8000/api/auth/google/callback
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
@@ -28,7 +28,7 @@ services:
   frontend:
     build:
       context: ./frontend
-    container_name: plandrift-frontend
+    container_name: planfirst-frontend
     restart: unless-stopped
     environment:
       - NEXT_PUBLIC_API_URL=http://localhost:8000

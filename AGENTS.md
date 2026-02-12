@@ -5,8 +5,8 @@ This document provides essential information for agentic coding agents working w
 ## Codebase Structure
 
 ```
-plandrift/
-├── src/plandrift/     # CLI tool (Python)
+planfirst/
+├── src/planfirst/     # CLI tool (Python)
 ├── backend/           # FastAPI API (Python)
 ├── frontend/          # Next.js frontend (TypeScript)
 └── AGENTS.md          # This file
@@ -35,10 +35,10 @@ cd backend
 uv run uvicorn app.main:app --reload --port 8000
 
 # CLI development
-uv run plandrift plan "destination"
+uv run planfirst plan "destination"
 
 # Or directly
-uv run python -m plandrift.cli plan "destination"
+uv run python -m planfirst.cli plan "destination"
 ```
 
 **Database Migrations:**
@@ -304,9 +304,9 @@ search_query = f"Ladakh travel advisories {current_year}"
    - Update database models if needed in `backend/app/db/models.py`
 
 2. **Adding a new CLI command:**
-   - Add command function in `src/plandrift/cli.py`
-   - Implement logic in separate modules under `src/plandrift/`
-   - Add required schemas in `src/plandrift/models.py`
+   - Add command function in `src/planfirst/cli.py`
+   - Implement logic in separate modules under `src/planfirst/`
+   - Add required schemas in `src/planfirst/models.py`
 
 3. **Adding a new frontend component:**
    - Create component file in `frontend/src/components/`

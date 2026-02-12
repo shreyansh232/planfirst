@@ -1,10 +1,13 @@
 """Web search and other tools for the travel planning agent."""
 
 import json
+import logging
 from typing import Any
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
 
 from ddgs import DDGS
+
+logger = logging.getLogger(__name__)
 
 
 # Tool definitions for OpenAI function calling
@@ -60,16 +63,19 @@ def web_search(query: str, num_results: int = 5) -> list[dict[str, str]]:
         List of search results with title, url, and snippet.
     """
     num_results = min(num_results, 5)
+    logger.info(f"[WEB SEARCH] Query: {query}")
 
     try:
+
         def _run() -> list[dict]:
             with DDGS() as ddgs:
                 return list(ddgs.text(query, max_results=num_results))
 
         with ThreadPoolExecutor(max_workers=1) as executor:
             future = executor.submit(_run)
-            results = future.result(timeout=8)
+            results = future.result(timeout=5)
 
+        logger.info(f"[WEB SEARCH] Found {len(results)} results for: {query}")
         return [
             {
                 "title": r.get("title", ""),
@@ -79,8 +85,10 @@ def web_search(query: str, num_results: int = 5) -> list[dict[str, str]]:
             for r in results
         ]
     except TimeoutError:
+        logger.warning(f"[WEB SEARCH] Timeout for query: {query}")
         return [{"error": "Search timed out. Proceed with estimates."}]
     except Exception as e:
+        logger.error(f"[WEB SEARCH] Error for query '{query}': {str(e)}")
         return [{"error": f"Search failed: {str(e)}"}]
 
 
@@ -95,12 +103,15 @@ def execute_tool(tool_name: str, arguments: dict[str, Any]) -> str:
         JSON string of tool results.
     """
     if tool_name == "web_search":
+        query = arguments.get("query", "")
+        logger.info(f"[TOOL CALL] Executing {tool_name} with query: {query}")
         results = web_search(
-            query=arguments.get("query", ""),
+            query=query,
             num_results=arguments.get("num_results", 5),
         )
         return json.dumps(results, indent=2)
 
+    logger.warning(f"[TOOL CALL] Unknown tool requested: {tool_name}")
     return json.dumps({"error": f"Unknown tool: {tool_name}"})
 
 

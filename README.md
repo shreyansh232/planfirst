@@ -45,7 +45,7 @@ Unlike typical travel planners that immediately generate generic itineraries, Pl
 ## 📦 Project Structure
 
 ```text
-plandrift/
+planfirst/
 ├── backend/                      # FastAPI application
 │   ├── app/
 │   │   ├── agent/               # Travel planning agent logic
@@ -93,7 +93,7 @@ Create a `.env` file in the project root:
 
 ```env
 # Database
-DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5433/plandrift
+DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5433/planfirst
 
 # Security
 SECRET_KEY=your-super-secret-key-here-change-in-production

@@ -1,5 +1,5 @@
 [project]
-name = "plandrift-backend"
+name = "planfirst-backend"
 version = "0.1.0"
 description = "Planfirst API - Constraint-first travel planning backend"
 readme = "README.md"

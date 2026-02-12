@@ -73,9 +73,9 @@ export function ChatInterface({
   const initialMessageIdRef = useRef<string | null>(null);
   const pendingPromptRef = useRef(initialPrompt);
   const storageKey = useMemo(() => {
-    if (tripId) return `plandrift_chat_trip_${tripId}`;
-    if (initialTripId) return `plandrift_chat_trip_${initialTripId}`;
-    return `plandrift_chat_prompt_${initialPrompt || "new"}`;
+    if (tripId) return `planfirst_chat_trip_${tripId}`;
+    if (initialTripId) return `planfirst_chat_trip_${initialTripId}`;
+    return `planfirst_chat_prompt_${initialPrompt || "new"}`;
   }, [initialPrompt, initialTripId, tripId]);
 
   const scrollToBottom = () => {
@@ -497,7 +497,7 @@ export function ChatInterface({
         if (mapped.length > 0) {
           setMessages(mapped);
         } else {
-          const storageKey = `plandrift_chat_trip_${initialTripId}`;
+          const storageKey = `planfirst_chat_trip_${initialTripId}`;
           const stored = localStorage.getItem(storageKey);
           if (stored) {
             try {
@@ -539,7 +539,7 @@ export function ChatInterface({
           return;
         }
         
-        const storageKey = `plandrift_chat_trip_${initialTripId}`;
+        const storageKey = `planfirst_chat_trip_${initialTripId}`;
         const stored = localStorage.getItem(storageKey);
         if (stored) {
           try {

@@ -124,6 +124,7 @@ Use web_search to find current/upcoming events and activities."""
         tools=TOOL_DEFINITIONS,
         tool_executor=execute_tool,
         temperature=0.3,
+        max_tool_calls=2,
         on_tool_call=on_tool_call,
     )
 
