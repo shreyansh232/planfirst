@@ -204,8 +204,24 @@ class TripSummary(BaseModel):
     destination: str
     status: str | None = None  # From latest version
     phase: str | None = None  # From latest version
+    last_message: str | None = None
+    last_message_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class TripMessageResponse(BaseModel):
+    """Single chat message for a trip conversation."""
+
+    id: UUID
+    trip_id: UUID
+    role: str
+    content: str
+    phase: str | None = None
+    created_at: datetime
 
     class Config:
         from_attributes = True

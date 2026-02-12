@@ -20,6 +20,7 @@ class TravelAgent:
         fast_model: Optional[str] = FAST_MODEL,
         on_search: Optional[Callable[[str], None]] = None,
         on_status: Optional[Callable[[str], None]] = None,
+        language_code: Optional[str] = None,
     ):
         """Initialize the travel agent.
 
@@ -27,6 +28,7 @@ class TravelAgent:
             api_key: OpenRouter API key. Uses OPENROUTER_API_KEY env var if not provided.
             model: Model to use via OpenRouter.
             on_search: Optional callback when a web search is performed.
+            language_code: Optional user's preferred language code (e.g., 'fr', 'es').
         """
         self.client = AIClient(api_key=api_key, model=model)
         self.fast_client = AIClient(
@@ -40,8 +42,9 @@ class TravelAgent:
         self._initial_extraction = None
         self.on_status = on_status
         self._last_status: Optional[str] = None
+        self.language_code = language_code  # Store user's preferred language
         self._graph = build_agent_graph(
-            self.client, self.fast_client, self._handle_tool_call
+            self.client, self.fast_client, self._handle_tool_call, language_code
         )
 
     def _run_graph(self, action: str, payload: dict) -> dict:
@@ -54,6 +57,7 @@ class TravelAgent:
             "initial_extraction": self._initial_extraction,
             "response": "",
             "has_high_risk": False,
+            "language_code": self.language_code,
         }
         result = self._graph.invoke(state)
         self.state = result["agent_state"]
@@ -81,7 +85,12 @@ class TravelAgent:
                 self._emit_status("Searching flights...")
             elif "hotel" in query or "hostel" in query:
                 self._emit_status("Finding stays...")
-            elif "transport" in query or "metro" in query or "train" in query or "pass" in query:
+            elif (
+                "transport" in query
+                or "metro" in query
+                or "train" in query
+                or "pass" in query
+            ):
                 self._emit_status("Estimating local transport...")
             elif "meal" in query or "food" in query:
                 self._emit_status("Estimating meal costs...")

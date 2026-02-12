@@ -19,6 +19,7 @@ def generate_plan(
     search_results: list[str],
     user_interests: list[str],
     on_tool_call: Callable[[str, dict], None] | None = None,
+    language_code: str | None = None,
 ) -> str:
     """Generate the travel itinerary.
 
@@ -28,13 +29,14 @@ def generate_plan(
         search_results: List of previous search results.
         user_interests: List of user interests/adjustments.
         on_tool_call: Optional callback for tool calls.
+        language_code: Optional user's preferred language code.
 
     Returns:
         Day-by-day travel plan.
     """
     from app.agent.formatters import format_plan
 
-    system_prompt = get_phase_prompt("planning")
+    system_prompt = get_phase_prompt("planning", language_code)
 
     constraints_text = format_constraints(state)
     assumptions_text = ""

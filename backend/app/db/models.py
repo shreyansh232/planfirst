@@ -13,6 +13,7 @@ from typing import Optional
 
 from sqlalchemy import (
     String,
+    Text,
     Integer,
     UniqueConstraint,
     Index,
@@ -166,6 +167,9 @@ class UserPreference(Base):
     risk_tolerance: Mapped[Optional[str]] = mapped_column(
         String(50), nullable=True
     )  # e.g., "low", "medium", "high"
+    preferred_language: Mapped[Optional[str]] = mapped_column(
+        String(10), nullable=True
+    )  # e.g., "en", "fr", "es" - user's preferred language for responses
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
@@ -222,6 +226,11 @@ class Trip(Base):
         back_populates="trip",
         cascade="all, delete-orphan",
         order_by="TripVersion.version_number",
+    )
+    messages: Mapped[list["TripMessage"]] = relationship(
+        back_populates="trip",
+        cascade="all, delete-orphan",
+        order_by="TripMessage.created_at",
     )
 
     __table_args__ = (
@@ -396,4 +405,36 @@ class TripVersion(Base):
             "days_json",
             postgresql_using="gin",
         ),
+    )
+
+
+class TripMessage(Base):
+    """Persisted chat messages for a trip conversation."""
+
+    __tablename__ = "trip_messages"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    trip_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("trips.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    role: Mapped[str] = mapped_column(String(20), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    phase: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        server_default=func.timezone("UTC", func.now()),
+        nullable=False,
+    )
+
+    trip: Mapped["Trip"] = relationship(back_populates="messages")
+
+    __table_args__ = (
+        Index("idx_trip_messages_trip_id", "trip_id"),
+        Index("idx_trip_messages_trip_id_created_at", "trip_id", "created_at"),
     )

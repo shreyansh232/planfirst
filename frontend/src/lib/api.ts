@@ -77,6 +77,8 @@ export interface TripSummary {
   destination: string;
   status: string | null;
   phase: string | null;
+  last_message?: string | null;
+  last_message_at?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -121,6 +123,15 @@ export interface TripWithVersions {
     phase: string;
     created_at: string;
   }[];
+}
+
+export interface TripMessage {
+  id: string;
+  trip_id: string;
+  role: "user" | "assistant" | "system";
+  content: string;
+  phase?: string | null;
+  created_at: string;
 }
 
 export type StreamMeta = {
@@ -443,6 +454,12 @@ export async function refineTripStream(
 
 export async function getTrips(): Promise<TripSummary[]> {
   return apiFetch<TripSummary[]>("/trips");
+}
+
+export async function getTripMessages(
+  tripId: string,
+): Promise<TripMessage[]> {
+  return apiFetch<TripMessage[]>(`/trips/${tripId}/messages`);
 }
 
 export async function getTrip(tripId: string): Promise<TripDetail> {

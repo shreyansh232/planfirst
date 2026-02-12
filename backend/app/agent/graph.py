@@ -30,12 +30,14 @@ class AgentGraphState(TypedDict):
     initial_extraction: Optional[InitialExtraction]
     response: str
     has_high_risk: bool
+    language_code: Optional[str]
 
 
 def build_agent_graph(
     client: AIClient,
     fast_client: AIClient,
     on_tool_call: Optional[Callable[[str, dict], None]] = None,
+    language_code: Optional[str] = None,
 ):
     """Build the LangGraph workflow used by the TravelAgent."""
 
@@ -45,7 +47,7 @@ def build_agent_graph(
     def node_start(state: AgentGraphState) -> AgentGraphState:
         prompt = state["input"].get("prompt", "")
         response, extracted = clarification.handle_start(
-            client, state["agent_state"], prompt
+            client, state["agent_state"], prompt, language_code
         )
         state["response"] = response
         state["initial_extraction"] = extracted
@@ -54,6 +56,7 @@ def build_agent_graph(
 
     def node_clarify(state: AgentGraphState) -> AgentGraphState:
         answers = state["input"].get("answers", "")
+        lang_code = state.get("language_code")
         constraints = clarification.process_clarification(
             client,
             state["agent_state"],
@@ -68,6 +71,7 @@ def build_agent_graph(
             state["agent_state"],
             state["search_results"],
             on_tool_call,
+            lang_code,
         )
         state["response"] = response
         state["has_high_risk"] = has_high_risk
@@ -93,8 +97,9 @@ def build_agent_graph(
             return state
 
         agent_state.phase = Phase.ASSUMPTIONS
+        lang_code = state.get("language_code")
         state["response"] = assumptions.generate_assumptions(
-            fast_client, agent_state
+            fast_client, agent_state, lang_code
         )
         state["has_high_risk"] = False
         return state
@@ -104,13 +109,12 @@ def build_agent_graph(
         modifications = state["input"].get("modifications")
         additional_interests = state["input"].get("additional_interests")
         agent_state = state["agent_state"]
+        lang_code = state.get("language_code")
         agent_state.awaiting_confirmation = False
 
         user_modifications = modifications
         if additional_interests:
-            user_modifications = (
-                f"{user_modifications or ''}\nAdditional interests: {additional_interests}"
-            )
+            user_modifications = f"{user_modifications or ''}\nAdditional interests: {additional_interests}"
 
         if not confirmed and user_modifications:
             result = sanitize_input(user_modifications)
@@ -124,18 +128,20 @@ def build_agent_graph(
             if agent_state.constraints:
                 agent_state.constraints.interests.append(user_modifications)
 
-            agent_state.add_message(
-                "user", f"Adjustments needed: {user_modifications}"
-            )
+            agent_state.add_message("user", f"Adjustments needed: {user_modifications}")
 
             search_results = assumptions.search_for_interests(
-                fast_client, agent_state, user_modifications, on_tool_call
+                fast_client, agent_state, user_modifications, on_tool_call, lang_code
             )
             if search_results:
                 state["search_results"].append(search_results)
 
             assumptions.update_assumptions_with_interests(
-                fast_client, agent_state, user_modifications, state["search_results"]
+                fast_client,
+                agent_state,
+                user_modifications,
+                state["search_results"],
+                lang_code,
             )
 
         agent_state.phase = Phase.PLANNING
@@ -145,14 +151,16 @@ def build_agent_graph(
             state["search_results"],
             state["user_interests"],
             on_tool_call,
+            lang_code,
         )
         state["has_high_risk"] = False
         return state
 
     def node_refine(state: AgentGraphState) -> AgentGraphState:
         refinement_type = state["input"].get("refinement_type", "")
+        lang_code = state.get("language_code")
         state["response"] = refinement.refine_plan(
-            client, state["agent_state"], refinement_type
+            client, state["agent_state"], refinement_type, lang_code
         )
         state["has_high_risk"] = False
         return state

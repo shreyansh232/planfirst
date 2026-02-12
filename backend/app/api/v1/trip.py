@@ -37,6 +37,7 @@ from app.schemas.trip import (
     TripResponse,
     TripSummary,
     TripWithVersions,
+    TripMessageResponse,
 )
 from app.services import trip as trip_service
 
@@ -422,6 +423,19 @@ async def get_trip_versions(
     return await trip_service.get_trip_version_history(
         db, trip_id, current_user.id
     )
+
+
+@router.get("/{trip_id}/messages", response_model=list[TripMessageResponse])
+async def get_trip_messages(
+    trip_id: UUID,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> list[TripMessageResponse]:
+    """Get chat messages for a trip conversation."""
+    messages = await trip_service.list_trip_messages(
+        db, trip_id, current_user.id
+    )
+    return [TripMessageResponse.model_validate(m) for m in messages]
 
 
 @router.delete("/{trip_id}", status_code=status.HTTP_204_NO_CONTENT)

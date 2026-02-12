@@ -19,6 +19,7 @@ def refine_plan(
     client: "AIClient",
     state: ConversationState,
     refinement_type: str,
+    language_code: str | None = None,
 ) -> str:
     """Refine the plan based on user's choice.
 
@@ -26,6 +27,7 @@ def refine_plan(
         client: AI client instance.
         state: Conversation state to update.
         refinement_type: Type of refinement requested.
+        language_code: Optional user's preferred language code.
 
     Returns:
         Refined plan.
@@ -41,7 +43,7 @@ def refine_plan(
 
     current_plan_text = format_plan(state.current_plan)
 
-    system_prompt = get_phase_prompt("refinement")
+    system_prompt = get_phase_prompt("refinement", language_code)
 
     budget_currency = detect_budget_currency(state)
 

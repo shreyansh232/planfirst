@@ -18,6 +18,7 @@ def run_feasibility_check(
     state: ConversationState,
     search_results: list[str],
     on_tool_call: Callable[[str, dict], None] | None = None,
+    language_code: str | None = None,
 ) -> tuple[str, bool]:
     """Run feasibility check and return risk assessment.
 
@@ -32,7 +33,7 @@ def run_feasibility_check(
     """
     from app.agent.formatters import format_risk_assessment
 
-    system_prompt = get_phase_prompt("feasibility")
+    system_prompt = get_phase_prompt("feasibility", language_code)
     constraints_text = format_constraints(state)
 
     # First, gather current information via web search
@@ -84,9 +85,7 @@ Provide a risk assessment for each category."""
         {"role": "user", "content": assessment_prompt},
     ]
 
-    risk = client.chat_structured(
-        assessment_messages, RiskAssessment, temperature=0.3
-    )
+    risk = client.chat_structured(assessment_messages, RiskAssessment, temperature=0.3)
     state.risk_assessment = risk
 
     # Format response

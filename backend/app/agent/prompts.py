@@ -126,13 +126,64 @@ Briefly explain what changed and why (1-2 sentences, not a paragraph).
 Keep the same concise format."""
 
 
-def get_phase_prompt(phase: str) -> str:
-    """Get the system prompt for a specific phase."""
-    prompts = {
+def get_phase_prompt(phase: str, language_code: str | None = None) -> str:
+    """Get the system prompt for a specific phase.
+
+    Args:
+        phase: The planning phase (clarification, feasibility, etc.)
+        language_code: Optional user's preferred language code (e.g., 'fr', 'es')
+
+    Returns:
+        Complete system prompt with language instruction if provided
+    """
+    base_prompts = {
         "clarification": f"{SYSTEM_PROMPT_BASE}\n\n{CLARIFICATION_PROMPT}",
         "feasibility": f"{SYSTEM_PROMPT_BASE}\n\n{FEASIBILITY_PROMPT}",
         "assumptions": f"{SYSTEM_PROMPT_BASE}\n\n{ASSUMPTIONS_PROMPT}",
         "planning": f"{SYSTEM_PROMPT_BASE}\n\n{PLANNING_PROMPT}",
         "refinement": f"{SYSTEM_PROMPT_BASE}\n\n{REFINEMENT_PROMPT}",
     }
-    return prompts.get(phase, SYSTEM_PROMPT_BASE)
+
+    prompt = base_prompts.get(phase, SYSTEM_PROMPT_BASE)
+
+    # Add language instruction if provided
+    if language_code:
+        lang_instruction = get_language_instruction(language_code)
+        prompt = f"{prompt}{lang_instruction}"
+
+    return prompt
+
+
+def get_language_instruction(language_code: str) -> str:
+    """Get the language instruction for the system prompt.
+
+    Args:
+        language_code: Language code (e.g., 'en', 'fr')
+
+    Returns:
+        Language instruction string for the system prompt
+    """
+    language_names = {
+        "en": "English",
+        "fr": "French",
+        "es": "Spanish",
+        "de": "German",
+        "it": "Italian",
+        "pt": "Portuguese",
+        "nl": "Dutch",
+        "ru": "Russian",
+        "zh": "Chinese",
+        "ja": "Japanese",
+        "ko": "Korean",
+        "ar": "Arabic",
+        "hi": "Hindi",
+        "tr": "Turkish",
+        "pl": "Polish",
+        "sv": "Swedish",
+        "no": "Norwegian",
+        "da": "Danish",
+        "fi": "Finnish",
+    }
+
+    lang_name = language_names.get(language_code, language_code)
+    return f"\n\nLANGUAGE PREFERENCE: The user prefers to communicate in {lang_name} ({language_code}). ALL your responses MUST be in {lang_name}."

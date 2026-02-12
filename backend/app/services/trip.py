@@ -19,8 +19,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent.agent import TravelAgent
+from app.agent.language_utils import get_user_language, update_user_language
 from app.config import get_settings
-from app.db.models import Trip, TripVersion, User
+from app.db.models import Trip, TripVersion, TripMessage, User, UserPreference
 from app.schemas.trip import (
     AgentResponse,
     TripResponse,
@@ -54,17 +55,12 @@ def _get_agent(trip_id: UUID) -> TravelAgent:
     if agent is None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=(
-                "Planning session expired or not found. "
-                "Please start a new trip."
-            ),
+            detail=("Planning session expired or not found. Please start a new trip."),
         )
     return agent
 
 
-async def _get_user_trip(
-    db: AsyncSession, trip_id: UUID, user_id: UUID
-) -> Trip:
+async def _get_user_trip(db: AsyncSession, trip_id: UUID, user_id: UUID) -> Trip:
     """Fetch a trip owned by the given user, or 404."""
     result = await db.execute(
         select(Trip).where(Trip.id == trip_id, Trip.user_id == user_id)
@@ -121,6 +117,27 @@ async def _persist_state(
     await db.refresh(version)
 
 
+async def _store_message(
+    db: AsyncSession,
+    trip_id: UUID,
+    role: str,
+    content: str,
+    phase: Optional[str] = None,
+) -> None:
+    """Persist a chat message for a trip."""
+    if not content.strip():
+        return
+    db.add(
+        TripMessage(
+            trip_id=trip_id,
+            role=role,
+            content=content.strip(),
+            phase=phase,
+        )
+    )
+    await db.commit()
+
+
 # ---------------------------------------------------------------------------
 # Conversation services (stateful, phase-by-phase)
 # ---------------------------------------------------------------------------
@@ -151,7 +168,14 @@ async def start_trip_conversation(
     # Enforce plan limits for free users (1 session per 2 days)
     await _enforce_plan_limit(db, user_id)
 
-    agent = TravelAgent(api_key=settings.openrouter_api_key, on_status=on_status)
+    # Fetch user's language preference
+    language_code = await get_user_language(db, user_id)
+
+    agent = TravelAgent(
+        api_key=settings.openrouter_api_key,
+        on_status=on_status,
+        language_code=language_code,
+    )
 
     # AI call — run in thread pool so we don't block the event loop
     message = await asyncio.to_thread(agent.start, prompt)
@@ -203,6 +227,21 @@ async def start_trip_conversation(
 
         _agent_sessions[existing_trip.id] = agent
 
+        await _store_message(
+            db,
+            existing_trip.id,
+            "user",
+            prompt,
+            phase=agent.state.phase.value,
+        )
+        await _store_message(
+            db,
+            existing_trip.id,
+            "assistant",
+            message,
+            phase=agent.state.phase.value,
+        )
+
         return AgentResponse(
             trip_id=existing_trip.id,
             version_id=version.id,
@@ -210,9 +249,7 @@ async def start_trip_conversation(
             message=message,
         )
 
-    version = TripVersion(
-        trip_id=trip.id, version_number=1, phase="clarification"
-    )
+    version = TripVersion(trip_id=trip.id, version_number=1, phase="clarification")
     db.add(version)
     await db.commit()
     await db.refresh(trip)
@@ -220,6 +257,21 @@ async def start_trip_conversation(
 
     # Store live session
     _agent_sessions[trip.id] = agent
+
+    await _store_message(
+        db,
+        trip.id,
+        "user",
+        prompt,
+        phase=agent.state.phase.value,
+    )
+    await _store_message(
+        db,
+        trip.id,
+        "assistant",
+        message,
+        phase=agent.state.phase.value,
+    )
 
     return AgentResponse(
         trip_id=trip.id,
@@ -257,6 +309,20 @@ async def submit_clarification(
     )
 
     await _persist_state(db, version, agent)
+    await _store_message(
+        db,
+        trip_id,
+        "user",
+        answers,
+        phase=agent.state.phase.value,
+    )
+    await _store_message(
+        db,
+        trip_id,
+        "assistant",
+        message,
+        phase=agent.state.phase.value,
+    )
 
     return AgentResponse(
         trip_id=trip_id,
@@ -296,10 +362,26 @@ async def proceed_after_feasibility(
 
     if agent.state.awaiting_confirmation:
         message = await asyncio.to_thread(agent.confirm_proceed, proceed)
+        user_message = "Let's proceed anyway." if proceed else "Let me reconsider."
     else:
         message = await asyncio.to_thread(agent.proceed_to_assumptions)
+        user_message = "Continue to planning."
 
     await _persist_state(db, version, agent)
+    await _store_message(
+        db,
+        trip_id,
+        "user",
+        user_message,
+        phase=agent.state.phase.value,
+    )
+    await _store_message(
+        db,
+        trip_id,
+        "assistant",
+        message,
+        phase=agent.state.phase.value,
+    )
 
     return AgentResponse(
         trip_id=trip_id,
@@ -347,6 +429,29 @@ async def confirm_trip_assumptions(
     )
 
     await _persist_state(db, version, agent)
+    if confirmed and not modifications and not additional_interests:
+        user_message = "Assumptions look good."
+    else:
+        parts = []
+        if modifications:
+            parts.append(modifications)
+        if additional_interests:
+            parts.append(additional_interests)
+        user_message = " ".join(parts).strip() or "Update assumptions."
+    await _store_message(
+        db,
+        trip_id,
+        "user",
+        user_message,
+        phase=agent.state.phase.value,
+    )
+    await _store_message(
+        db,
+        trip_id,
+        "assistant",
+        message,
+        phase=agent.state.phase.value,
+    )
 
     return AgentResponse(
         trip_id=trip_id,
@@ -384,6 +489,20 @@ async def refine_trip_plan(
     message = await asyncio.to_thread(agent.refine_plan, refinement_type)
 
     await _persist_state(db, version, agent)
+    await _store_message(
+        db,
+        trip_id,
+        "user",
+        refinement_type,
+        phase=agent.state.phase.value,
+    )
+    await _store_message(
+        db,
+        trip_id,
+        "assistant",
+        message,
+        phase=agent.state.phase.value,
+    )
 
     return AgentResponse(
         trip_id=trip_id,
@@ -424,14 +543,38 @@ async def list_user_trips(
         .subquery()
     )
 
+    # Subquery: latest message timestamp per trip
+    latest_msg = (
+        select(
+            TripMessage.trip_id,
+            func.max(TripMessage.created_at).label("max_ts"),
+        )
+        .group_by(TripMessage.trip_id)
+        .subquery()
+    )
+
     result = await db.execute(
-        select(Trip, TripVersion.status, TripVersion.phase)
+        select(
+            Trip,
+            TripVersion.status,
+            TripVersion.phase,
+            TripMessage.content,
+            TripMessage.created_at,
+        )
         .outerjoin(latest_vn, Trip.id == latest_vn.c.trip_id)
         .outerjoin(
             TripVersion,
             and_(
                 TripVersion.trip_id == Trip.id,
                 TripVersion.version_number == latest_vn.c.max_vn,
+            ),
+        )
+        .outerjoin(latest_msg, Trip.id == latest_msg.c.trip_id)
+        .outerjoin(
+            TripMessage,
+            and_(
+                TripMessage.trip_id == Trip.id,
+                TripMessage.created_at == latest_msg.c.max_ts,
             ),
         )
         .where(Trip.user_id == user_id)
@@ -446,10 +589,12 @@ async def list_user_trips(
             destination=trip.destination,
             status=ver_status,
             phase=ver_phase,
+            last_message=last_message,
+            last_message_at=last_message_at,
             created_at=trip.created_at,
             updated_at=trip.updated_at,
         )
-        for trip, ver_status, ver_phase in rows
+        for trip, ver_status, ver_phase, last_message, last_message_at in rows
     ]
 
 
@@ -528,6 +673,21 @@ async def get_trip_version_history(
     )
 
 
+async def list_trip_messages(
+    db: AsyncSession,
+    trip_id: UUID,
+    user_id: UUID,
+) -> list[TripMessage]:
+    """Return all chat messages for a trip (oldest first)."""
+    await _get_user_trip(db, trip_id, user_id)
+    result = await db.execute(
+        select(TripMessage)
+        .where(TripMessage.trip_id == trip_id)
+        .order_by(TripMessage.created_at.asc())
+    )
+    return list(result.scalars().all())
+
+
 async def delete_user_trip(
     db: AsyncSession,
     trip_id: UUID,
@@ -547,6 +707,8 @@ async def delete_user_trip(
 
     await db.delete(trip)
     await db.commit()
+
+
 async def _enforce_plan_limit(db: AsyncSession, user_id: UUID) -> None:
     user = await db.get(User, user_id)
     if not user:
