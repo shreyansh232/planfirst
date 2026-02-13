@@ -73,6 +73,9 @@ RULES:
 - Include realistic travel times between locations
 - Add buffer days for unpredictable conditions
 - Keep descriptions concise — 1-2 lines per activity, not paragraphs
+- DON'T GIVE HOUR BY HOUR TIMELINE. DIVIDE THE DAY INTO MORNING, AFTERNOON, and EVENING.
+- Do NOT use bolding or markdown asterisks (**) for prices or activity names. Keep text clean.
+- FLIGHT COSTS: Interpret searched flight costs as round-trip per-person unless specified otherwise.
 
 CURRENCY (CRITICAL):
 - ALL prices MUST be in the user's budget currency (the currency they mentioned).
@@ -157,7 +160,7 @@ def get_phase_prompt(phase: str, language_code: str | None = None) -> str:
         "clarification": f"{SYSTEM_PROMPT_BASE}\n\n{CLARIFICATION_PROMPT}",
         "feasibility": f"{SYSTEM_PROMPT_BASE}\n\n{FEASIBILITY_PROMPT}",
         "assumptions": f"{SYSTEM_PROMPT_BASE}\n\n{ASSUMPTIONS_PROMPT}",
-        "planning": f"{SYSTEM_PROMPT_BASE}\n\n{PLANNING_PROMPT}",
+        "planning": f"{SYSTEM_PROMPT_BASE}\n\n{PLANNING_PROMPT}\n\nEXAMPLE GOOD ITINERARY:\n{EXAMPLE_ITINERARY}",
         "refinement": f"{SYSTEM_PROMPT_BASE}\n\n{REFINEMENT_PROMPT}",
     }
 
@@ -204,3 +207,84 @@ def get_language_instruction(language_code: str) -> str:
 
     lang_name = language_names.get(language_code, language_code)
     return f"\n\nLANGUAGE PREFERENCE: The user prefers to communicate in {lang_name} ({language_code}). ALL your responses MUST be in {lang_name}."
+
+
+EXAMPLE_ITINERARY = """5-Day Itinerary for Switzerland Adventure
+Day 1: Arrival in Zurich
+Morning: Arrive at Zurich Airport. Take a train to Zurich Hauptbahnhof (Main Station) (30 min). Estimated cost: ₹1,000.
+Noon: Check in at Hotel Adler, located in the Old Town. Large family room: ₹15,000/night.
+Afternoon: Explore Bahnhofstrasse, one of the world's most exclusive shopping streets. Free activity.
+Evening: Dinner at Swiss Chuchi Restaurant for traditional fondue. Estimated cost: ₹4,000.
+
+Tips:
+- Buy a Zurich Card for unlimited public transport for 24 hours (₹1,500).
+- Try the chocolate at Lindt Chocolate Shop nearby.
+- Most shops close by 6 PM, plan accordingly.
+Day 1 total: Accommodation ₹15,000 + Food ₹4,000 + Activities ₹1,000 + Transport ₹1,000 = ₹21,000
+
+Day 2: Lucerne Day Trip
+Morning: Travel to Lucerne via train (1 hour). Estimated cost: ₹1,200.
+Noon: Visit the Chapel Bridge and Water Tower. Free activity.
+Afternoon: Lunch at Wirtshaus Galliker (try local specialties). Estimated cost: ₹3,000.
+Evening: Explore Lake Lucerne with a boat cruise (1 hour). Estimated cost: ₹3,500. Return to Zurich. Estimated transport cost: ₹1,200.
+
+Tips:
+- Buy a round-trip train ticket in advance for discounts.
+- Don't miss the views from the Lion Monument, nearby.
+- Always check the weather before planning a boat trip.
+Day 2 total: Accommodation ₹0 (already paid) + Food ₹3,000 + Activities ₹3,500 + Transport ₹3,600 = ₹10,100
+
+Day 3: Interlaken Adventure
+Morning: Check out and travel to Interlaken by train (2 hours). Estimated cost: ₹2,500.
+Noon: Check in at Hotel Interlaken, family room: ₹18,000/night.
+Afternoon: Take a stroll at Harder Kulm (cable car ride). Estimated cost: ₹4,000.
+Evening: Dinner at Restaurant Taverne, enjoy Swiss cuisine. Estimated cost: ₹4,000.
+
+Tips:
+- Book cable car tickets online to save time.
+- Visit the Aare River for stunning views, it's free!
+- Remember to carry cash; some places may not accept cards.
+Day 3 total: Accommodation ₹18,000 + Food ₹4,000 + Activities ₹4,000 + Transport ₹2,500 = ₹28,500
+
+Day 4: Jungfraujoch Excursion
+Morning: Early train to Jungfraujoch, the "Top of Europe" (2 hours). Estimated cost: ₹5,000.
+Noon: Explore the Ice Palace and Sphinx Observatory. Estimated cost: ₹3,000.
+Afternoon: Lunch at Aletsch Restaurant. Estimated cost: ₹4,000.
+Evening: Return to Interlaken. Estimated transport cost: ₹2,500.
+
+Tips:
+- Start early to maximize your time at Jungfraujoch.
+- Wear warm clothing; it can be very cold at high altitudes.
+- Bring a camera for stunning photo opportunities!
+Day 4 total: Accommodation ₹0 (already paid) + Food ₹4,000 + Activities ₹3,000 + Transport ₹7,500 = ₹14,500
+
+Day 5: Departure from Zurich
+Morning: Check out and travel back to Zurich (2 hours). Estimated cost: ₹2,500.
+Noon: Last-minute shopping at Niederdorf. Free activity.
+Afternoon: Lunch at Raclette Stube. Estimated cost: ₹4,000.
+Evening: Head to Zurich Airport for departure. Estimated transport cost: ₹1,000.
+
+Tips:
+- Keep an eye on your flight time to avoid rush.
+- Use up any remaining Swiss Francs for souvenirs.
+- Don't forget to try raclette if you haven't yet!
+Day 5 total: Accommodation ₹0 (already paid) + Food ₹4,000 + Activities ₹0 + Transport ₹3,500 = ₹7,500
+
+Budget Breakdown
+Flights (Round-trip): ₹60,000
+Day 1: ₹21,000
+Day 2: ₹10,100
+Day 3: ₹28,500
+Day 4: ₹14,500
+Day 5: ₹7,500
+Total Spending: ₹1,41,600
+Budget Left: ₹1,58,400
+
+General Tips for Your Trip
+- Ensure passports are valid for at least 6 months beyond your departure.
+- Buy a local SIM card at the airport for data and calls.
+- Respect local customs; greetings and polite behavior are appreciated.
+- Download apps like SBB Mobile for train schedules.
+- Exchange some currency at home for better rates.
+- Pack layers, including warm clothing and waterproof jackets for unpredictable weather.
+"""

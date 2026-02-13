@@ -698,6 +698,11 @@ async def confirm_assumptions_token_stream(
             }
             yield f"event: meta\ndata: {json.dumps(meta)}\n\n"
 
+            # Send destination images if available (for carousel)
+            dest_images = agent.get_destination_images()
+            if dest_images:
+                yield f"event: images\ndata: {json.dumps({'images': dest_images})}\n\n"
+
             task = asyncio.create_task(asyncio.to_thread(run))
 
             while not task.done() or not status_queue.empty() or not token_queue.empty():

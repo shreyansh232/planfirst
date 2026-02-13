@@ -141,11 +141,19 @@ export type StreamMeta = {
   has_high_risk: boolean;
 };
 
+export interface DestinationImage {
+  title: string;
+  image_url: string;
+  thumbnail_url: string;
+  source: string;
+}
+
 export type StreamEvent =
   | { type: "meta"; data: StreamMeta }
   | { type: "delta"; data: string }
   | { type: "token"; data: string }
   | { type: "status"; data: string }
+  | { type: "images"; data: DestinationImage[] }
   | { type: "done" };
 
 // ---------------------------------------------------------------------------
@@ -291,6 +299,9 @@ async function streamFetch(
         } else if (eventType === "token") {
           const payload = JSON.parse(data) as { text: string };
           yield { type: "token", data: payload.text };
+        } else if (eventType === "images") {
+          const payload = JSON.parse(data) as { images: DestinationImage[] };
+          yield { type: "images", data: payload.images };
         } else if (eventType === "status") {
           const payload = JSON.parse(data) as { text: string };
           yield { type: "status", data: payload.text };

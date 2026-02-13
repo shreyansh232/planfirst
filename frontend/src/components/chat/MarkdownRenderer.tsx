@@ -11,37 +11,37 @@ interface MarkdownRendererProps {
 
 const components: Components = {
   h1: ({ children }) => (
-    <h1 className="text-xl font-bold text-foreground mt-6 mb-3 first:mt-0" style={{ fontFamily: 'var(--font-display)' }}>
+    <h1 className="text-xl font-bold mt-6 mb-3 first:mt-0" style={{ fontFamily: 'var(--font-display)' }}>
       {children}
     </h1>
   ),
   h2: ({ children }) => (
-    <h2 className="text-lg font-bold text-foreground mt-5 mb-2 first:mt-0" style={{ fontFamily: 'var(--font-display)' }}>
+    <h2 className="text-lg font-bold mt-5 mb-2 first:mt-0" style={{ fontFamily: 'var(--font-display)' }}>
       {children}
     </h2>
   ),
   h3: ({ children }) => (
-    <h3 className="text-base font-semibold text-foreground mt-5 mb-2 first:mt-0">
+    <h3 className="text-base font-semibold mt-5 mb-2 first:mt-0">
       {children}
     </h3>
   ),
   h4: ({ children }) => (
-    <h4 className="text-sm font-semibold text-foreground mt-4 mb-1.5 first:mt-0">
+    <h4 className="text-sm font-semibold mt-4 mb-1.5 first:mt-0">
       {children}
     </h4>
   ),
   h5: ({ children }) => (
-    <h5 className="text-sm font-medium text-foreground mt-3 mb-1 first:mt-0">
+    <h5 className="text-sm font-medium mt-3 mb-1 first:mt-0">
       {children}
     </h5>
   ),
   h6: ({ children }) => (
-    <h6 className="text-sm font-medium text-muted-foreground mt-3 mb-1 first:mt-0">
+    <h6 className="text-sm font-medium opacity-80 mt-3 mb-1 first:mt-0">
       {children}
     </h6>
   ),
   p: ({ children }) => (
-    <p className="text-[15px] leading-relaxed text-foreground/85 mb-2 last:mb-0">
+    <p className="text-[15px] leading-relaxed mb-2 last:mb-0">
       {children}
     </p>
   ),
@@ -54,15 +54,15 @@ const components: Components = {
     </ol>
   ),
   li: ({ children }) => (
-    <li className="text-[15px] leading-relaxed text-foreground/85 marker:text-accent">
+    <li className="text-[15px] leading-relaxed marker:text-current/70">
       {children}
     </li>
   ),
   strong: ({ children }) => (
-    <strong className="font-semibold text-foreground">{children}</strong>
+    <strong className="font-bold text-current">{children}</strong>
   ),
   em: ({ children }) => (
-    <em className="italic text-foreground/80">{children}</em>
+    <em className="italic opacity-90">{children}</em>
   ),
   a: ({ href, children }) => (
     <a

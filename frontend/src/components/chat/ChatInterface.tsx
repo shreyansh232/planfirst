@@ -16,8 +16,9 @@ import {
   ApiError,
   clearTokens,
 } from "@/lib/api";
-import type { AuthUser, StreamEvent, StreamMeta } from "@/lib/api";
+import type { AuthUser, StreamEvent, StreamMeta, DestinationImage } from "@/lib/api";
 import { MarkdownRenderer } from "./MarkdownRenderer";
+import { ImageCarousel } from "./ImageCarousel";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -28,6 +29,7 @@ interface Message {
   role: "user" | "assistant" | "system";
   content: string;
   phase?: string;
+  images?: DestinationImage[];
 }
 
 interface ChatInterfaceProps {
@@ -161,7 +163,7 @@ export function ChatInterface({
         initialMessageIdRef.current = createdId;
         setMessages((prev) => [
           ...prev,
-          { id: createdId, role: "assistant", content: "", phase: undefined },
+          { id: createdId, role: "assistant", content: "", phase: undefined, images: [] },
         ]);
         created = true;
       };
@@ -208,6 +210,19 @@ export function ChatInterface({
           );
           hasContent = true;
           setStreamingHasDelta(true);
+        }
+        // Handle images event
+        if (event.type === "images") {
+          if (!created) {
+            ensureMessage();
+          }
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === (initialMessageIdRef.current || id)
+                ? { ...msg, images: event.data }
+                : msg,
+            ),
+          );
         }
       }
 
@@ -660,16 +675,19 @@ export function ChatInterface({
                   {/* Message Bubble */}
                   <div className={`
                     rounded-2xl px-5 py-4 shadow-sm
-                    ${message.role === "user"
-                      ? "bg-accent text-white rounded-br-md"
-                      : "bg-white border border-border/20 text-foreground rounded-bl-md"
+                    ${
+                      message.role === "user"
+                        ? "bg-accent text-white rounded-br-md"
+                        : "bg-white border border-border/20 text-foreground rounded-bl-md"
                     }
-                  `}>
-                    {message.role === "assistant" ? (
+                  `}
+                  >
+                    <div className="prose prose-sm max-w-none dark:prose-invert">
+                      {message.images && message.images.length > 0 && (
+                        <ImageCarousel images={message.images} />
+                      )}
                       <MarkdownRenderer content={message.content} />
-                    ) : (
-                      <p className="text-[15px] leading-relaxed">{message.content}</p>
-                    )}
+                    </div>
                   </div>
                 </div>
               )}

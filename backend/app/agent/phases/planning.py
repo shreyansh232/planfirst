@@ -88,6 +88,7 @@ PREVIOUS RESEARCH is provided above. Do NOT re-search for information already av
 Only search for information NOT already covered. Typical gaps:
 - Specific attraction entry fees
 - Average meal costs
+- Flight/Transport costs from origin to destination (if origin is known)
 - Offbeat spots matching interests
 
 IMPORTANT:
@@ -176,8 +177,11 @@ def generate_plan_stream(
     user_interests: list[str],
     on_tool_call: Callable[[str, dict], None] | None = None,
     language_code: str | None = None,
+    flight_costs: str = "",
 ) -> Iterator[str]:
     """Generate the travel itinerary with token streaming."""
+    # FIX 1: Only do expensive research if we have NO prior search results
+    # from the feasibility phase. This saves 5-15s of blocking time.
     # FIX 1: Only do expensive research if we have NO prior search results
     # from the feasibility phase. This saves 5-15s of blocking time.
     if not search_results:
@@ -214,6 +218,8 @@ def generate_plan_stream(
 
 Research findings (use these for accurate cost estimates):
 {research_context}
+
+{flight_costs}
 
 CURRENCY: ALL prices MUST be in {budget_currency}.
 

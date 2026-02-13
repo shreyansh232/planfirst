@@ -1,5 +1,6 @@
 """TravelAgent - Main orchestrator for the travel planning conversation."""
 
+import concurrent.futures
 import logging
 from typing import Callable, Optional, Iterator
 
@@ -12,8 +13,13 @@ from app.agent.phases import (
     planning,
     refinement,
 )
+from app.agent.image_search import search_destination_images
+from app.agent.flight_search import search_flight_costs
 
 logger = logging.getLogger(__name__)
+
+# Background executor for image search
+_img_executor = concurrent.futures.ThreadPoolExecutor(max_workers=2)
 
 
 class TravelAgent:
@@ -49,6 +55,10 @@ class TravelAgent:
         self.on_status = on_status
         self._last_status: Optional[str] = None
         self.language_code = language_code  # Store user's preferred language
+        self.destination_images: list[dict] = []
+        self._image_search_future: Optional[concurrent.futures.Future] = None
+        self._flight_search_future: Optional[concurrent.futures.Future] = None
+        self._flight_costs: str = ""
         self._graph = build_agent_graph(
             self.client, self.fast_client, self._handle_tool_call, language_code
         )
@@ -79,6 +89,54 @@ class TravelAgent:
             return
         self._last_status = message
         self.on_status(message)
+
+    def _start_image_search(self, destination: str) -> None:
+        """Kick off background image search for the destination."""
+        if self._image_search_future is not None:
+            return  # Already searching
+        logger.info(f"[AGENT] Starting background image search for: {destination}")
+        self._image_search_future = _img_executor.submit(
+            search_destination_images, destination, 6
+        )
+
+    def get_destination_images(self) -> list[dict]:
+        """Get cached destination images, waiting up to 5s if search is still running."""
+        if self.destination_images:
+            return self.destination_images
+        if self._image_search_future is None:
+            return []
+        try:
+            self.destination_images = self._image_search_future.result(timeout=5)
+        except Exception as e:
+            logger.warning(f"[AGENT] Image search failed: {e}")
+            self.destination_images = []
+        return self.destination_images
+
+    def _start_flight_search(
+        self, origin: str, destination: str, date_context: str | None = None
+    ) -> None:
+        """Kick off background flight cost search."""
+        if self._flight_search_future is not None or not origin or not destination:
+            return
+        logger.info(
+            f"[AGENT] Starting background flight search: {origin} -> {destination}"
+        )
+        self._flight_search_future = _img_executor.submit(
+            search_flight_costs, origin, destination, date_context
+        )
+
+    def get_flight_costs(self) -> str:
+        """Get cached flight costs, waiting up to 6s if search is still running."""
+        if self._flight_costs:
+            return self._flight_costs
+        if self._flight_search_future is None:
+            return ""
+        try:
+            self._flight_costs = self._flight_search_future.result(timeout=6)
+        except Exception as e:
+            logger.warning(f"[AGENT] Flight search failed/timeout: {e}")
+            self._flight_costs = ""
+        return self._flight_costs
 
     def _handle_tool_call(self, tool_name: str, arguments: dict) -> None:
         """Handle tool call notifications."""
@@ -118,6 +176,14 @@ class TravelAgent:
             Clarification questions for missing info, or request for origin/destination.
         """
         result = self._run_graph("start", {"prompt": user_prompt})
+        # Kick off background image search if destination was extracted
+        if self.state.destination:
+            self._start_image_search(self.state.destination)
+        # Kick off flight search if origin and destination are known
+        if self.state.origin and self.state.destination:
+            # Try to get date context from extraction, or default to generic
+            date_ctx = self._initial_extraction.month_or_season if self._initial_extraction else None
+            self._start_flight_search(self.state.origin, self.state.destination, date_ctx)
         return result["response"]
 
     def process_clarification(self, answers: str) -> tuple[str, bool]:
@@ -216,14 +282,27 @@ class TravelAgent:
     def start_stream(self, user_prompt: str) -> Iterator[str]:
         """Start a new trip planning conversation with token streaming."""
         self._emit_status("Understanding your request...")
-        return clarification.handle_start_stream(
+        stream = clarification.handle_start_stream(
             self.client, self.state, user_prompt, self.language_code
         )
+        started = False
+        for token in stream:
+            yield token
+            # After first token, destination should be extracted — start image search
+            if not started:
+                if self.state.destination:
+                    self._start_image_search(self.state.destination)
+                
+                # Also start flight search if we happen to have origin immediately
+                if self.state.origin and self.state.destination:
+                    date_ctx = self._initial_extraction.month_or_season if self._initial_extraction else None
+                    self._start_flight_search(self.state.origin, self.state.destination, date_ctx)
+                started = True
 
     def process_clarification_stream(self, answers: str) -> Iterator[str]:
         """Process clarification answers with token streaming."""
         self._emit_status("Analyzing your answers...")
-        return clarification.process_clarification_stream(
+        stream = clarification.process_clarification_stream(
             self.client,
             self.state,
             answers,
@@ -231,6 +310,22 @@ class TravelAgent:
             self.language_code,
             search_results=self.search_results,
         )
+        for token in stream:
+            yield token
+        
+        # After clarification, check for origin/dest in constraints or extraction
+        origin = self.state.origin or (self.state.constraints and self.state.constraints.origin)
+        destination = self.state.destination or (self.state.constraints and self.state.constraints.destination)
+        
+        if origin and destination:
+            # Get date context
+            date_ctx = None
+            if self.state.constraints and self.state.constraints.month_or_season:
+                date_ctx = self.state.constraints.month_or_season
+            elif self._initial_extraction and self._initial_extraction.month_or_season:
+                date_ctx = self._initial_extraction.month_or_season
+            
+            self._start_flight_search(origin, destination, date_ctx)
 
     def confirm_proceed_stream(self, proceed: bool) -> Iterator[str]:
         """Handle proceed decision with token streaming."""
@@ -283,6 +378,7 @@ class TravelAgent:
             self.user_interests,
             on_tool_call=self._handle_tool_call,
             language_code=self.language_code,
+            flight_costs=self.get_flight_costs(),
         )
 
     def refine_plan_stream(self, refinement_type: str) -> Iterator[str]:
