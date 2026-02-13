@@ -17,7 +17,7 @@ import {
   clearTokens,
 } from "@/lib/api";
 import type { AuthUser, StreamEvent, StreamMeta } from "@/lib/api";
-import { MarkdownRenderer } from "@/components/chat/MarkdownRenderer";
+import { MarkdownRenderer } from "./MarkdownRenderer";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -695,7 +695,7 @@ export function ChatInterface({
                     setNextAction("text_input");
                     doProceed(true, true);
                   }}
-                  className="w-full bg-accent hover:bg-accent/90 text-white rounded-xl"
+                  className="w-full bg-accent hover:bg-accent/90 text-white rounded-xl cursor-pointer"
                 >
                   Continue to Planning
                 </Button>

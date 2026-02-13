@@ -1,6 +1,7 @@
 """Feasibility phase handler."""
 
 import logging
+import concurrent.futures
 from datetime import datetime
 from typing import TYPE_CHECKING, Callable, Iterator, Tuple
 
@@ -14,6 +15,43 @@ if TYPE_CHECKING:
     from app.agent.ai_client import AIClient
 
 logger = logging.getLogger(__name__)
+
+# Background thread pool for fire-and-forget JSON structuring
+_bg_executor = concurrent.futures.ThreadPoolExecutor(max_workers=2)
+
+
+def _parse_risk_bg(
+    client: "AIClient",
+    system_prompt: str,
+    full_response: str,
+    state: ConversationState,
+) -> None:
+    """Background task: parse streamed text into structured RiskAssessment."""
+    try:
+        structured_prompt = f"Provide the structured RiskAssessment JSON for: {full_response}"
+        risk = client.chat_structured(
+            [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": structured_prompt},
+            ],
+            RiskAssessment,
+            temperature=0.1,
+        )
+        state.risk_assessment = risk
+        logger.info("Background risk assessment structuring completed")
+    except Exception:
+        logger.exception("Background risk assessment structuring failed")
+
+
+def _quick_high_risk_check(text: str) -> bool:
+    """Fast heuristic: check if response text mentions high risk indicators."""
+    lowered = text.lower()
+    high_indicators = [
+        "high risk", "strongly advise against", "not recommended",
+        "dangerous", "severe warning", "travel advisory",
+        "do not travel", "extreme caution", "life-threatening",
+    ]
+    return any(indicator in lowered for indicator in high_indicators)
 
 
 def _gather_research(
@@ -109,12 +147,8 @@ def run_feasibility_check_stream(
     search_results: list[str],
     on_tool_call: Callable[[str, dict], None] | None = None,
     language_code: str | None = None,
-    on_status: Callable[[str], None] | None = None,
 ) -> Iterator[str]:
     """Run feasibility check with token streaming."""
-    if on_status:
-        on_status("Analyzing risks...")
-
     search_response = _gather_research(
         client, state, on_tool_call=on_tool_call, language_code=language_code
     )
@@ -123,8 +157,6 @@ def run_feasibility_check_stream(
     system_prompt = get_phase_prompt("feasibility", language_code)
     constraints_text = format_constraints(state)
 
-    # To provide token-by-token streaming of the assessment, we'll ask the AI
-    # to provide a natural language summary based on the research.
     assessment_prompt = f"""Based on the information gathered, provide a detailed feasibility assessment and risk analysis for this trip:
 
 {constraints_text}
@@ -144,28 +176,11 @@ Be specific about weather, route, health, and infrastructure. Include a clear co
         full_response += token
         yield token
 
-    # Yield a transition to mask the pause
-    transition = "\n\nJust double-checking the safety details..."
-    full_response += transition
-    yield transition
+    # Fire-and-forget: parse risk assessment in background
+    _bg_executor.submit(_parse_risk_bg, client, system_prompt, full_response, state)
 
-    # Show status before blocking step
-    if on_status:
-        on_status("Verifying details...")
-
-    # After streaming the text, we MUST still do the structured call to update state
-    # This happens in the background from the user's perspective.
-    structured_prompt = f"Provide the structured RiskAssessment JSON for: {full_response}"
-    risk = client.chat_structured(
-        [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": structured_prompt},
-        ],
-        RiskAssessment,
-        temperature=0.1,
-    )
-    state.risk_assessment = risk
-    has_high_risk = _check_high_risk(risk)
+    # Quick heuristic check from streamed text (no LLM call needed)
+    has_high_risk = _quick_high_risk_check(full_response)
 
     if has_high_risk:
         extra = "\n\nThis trip has some real risks. Want to go ahead anyway, or should we look at alternatives?"
@@ -174,9 +189,6 @@ Be specific about weather, route, health, and infrastructure. Include a clear co
         full_response += extra
     else:
         state.phase = Phase.ASSUMPTIONS
-        extra = "\n\nEverything looks good to go!"
-        yield extra
-        full_response += extra
 
     state.add_message("assistant", full_response)
 

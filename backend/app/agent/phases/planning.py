@@ -1,6 +1,7 @@
 """Planning phase handler."""
 
 import logging
+import concurrent.futures
 from datetime import datetime
 from typing import TYPE_CHECKING, Callable, Iterator
 
@@ -14,6 +15,34 @@ if TYPE_CHECKING:
     from app.agent.ai_client import AIClient
 
 logger = logging.getLogger(__name__)
+
+# Background thread pool for fire-and-forget JSON structuring
+_bg_executor = concurrent.futures.ThreadPoolExecutor(max_workers=2)
+
+
+def _parse_plan_bg(
+    client: "AIClient",
+    system_prompt: str,
+    full_response: str,
+    state: ConversationState,
+) -> None:
+    """Background task: parse streamed text into structured TravelPlan."""
+    try:
+        structured_prompt = (
+            f"Provide the structured TravelPlan JSON for this itinerary: {full_response}"
+        )
+        plan = client.chat_structured(
+            [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": structured_prompt},
+            ],
+            TravelPlan,
+            temperature=0.3,
+        )
+        state.current_plan = plan
+        logger.info("Background plan structuring completed successfully")
+    except Exception:
+        logger.exception("Background plan structuring failed")
 
 
 def _gather_planning_research(
@@ -147,15 +176,11 @@ def generate_plan_stream(
     user_interests: list[str],
     on_tool_call: Callable[[str, dict], None] | None = None,
     language_code: str | None = None,
-    on_status: Callable[[str], None] | None = None,
 ) -> Iterator[str]:
     """Generate the travel itinerary with token streaming."""
-
-    # Only do the expensive research phase when we have NO prior search results.
-    # Earlier phases (feasibility) already gathered pricing and context.
+    # FIX 1: Only do expensive research if we have NO prior search results
+    # from the feasibility phase. This saves 5-15s of blocking time.
     if not search_results:
-        if on_status:
-            on_status("Researching prices and attractions...")
         planning_research = _gather_planning_research(
             client,
             state,
@@ -165,9 +190,6 @@ def generate_plan_stream(
             language_code=language_code,
         )
         search_results.append(planning_research)
-
-    if on_status:
-        on_status("Writing your itinerary...")
 
     system_prompt = get_phase_prompt("planning", language_code)
     constraints_text = format_constraints(state)
@@ -195,13 +217,45 @@ Research findings (use these for accurate cost estimates):
 
 CURRENCY: ALL prices MUST be in {budget_currency}.
 
-Format the itinerary nicely with markdown headers, bullet points, daily totals, and a budget breakdown at the end.
+FORMAT RULES (follow this EXACTLY):
 
-IMPORTANT:
-- Do NOT list "Breakfast", "Lunch", or "Dinner" as separate bullet points unless it's a specific famous restaurant or food experience.
-- Focus on specific places to visit, things to do, and venues.
-- Include clear transport details between locations.
-- For each day, include specific tips or notes for the places visited (e.g., best photo spots, hidden gems, or practical advice)."""
+1. Start with an H1 title like "# 5-Day Itinerary for [Destination] Adventure"
+
+2. For each day use this format:
+## Day X: [Title]
+**Morning:** Activity description. Estimated cost: {budget_currency}X.
+**Noon/Afternoon/Evening:** Continue with specific activities.
+- Use **bold** for specific venue/restaurant names
+- Include estimated cost for EACH activity
+- Include specific timings where possible (e.g., "9:00 AM – 11:00 AM")
+
+**Tips:**
+- 2-4 practical tips per day (money-saving hacks, must-try food, hidden gems, important warnings)
+
+**Day X total:** Accommodation {budget_currency}X + Food {budget_currency}X + Activities {budget_currency}X + Transport {budget_currency}X = {budget_currency}X
+
+3. After all days, include:
+## Budget Breakdown
+- List each day's total
+- Show Total Spending
+- Show Budget Left (if under budget)
+
+## General Tips for Your Trip
+- Visa/entry requirements
+- SIM card / connectivity advice
+- Cultural etiquette
+- Essential apps to download
+- Money exchange tips
+- Packing essentials for the season
+
+QUALITY RULES:
+- Recommend SPECIFIC named hotels with neighborhood and per-night cost
+- Recommend SPECIFIC named restaurants for meals (not generic "lunch at a café")
+- Include realistic transport between locations with mode and cost
+- Every activity must have a cost estimate
+- Be concise but specific — 1-2 lines per activity, not paragraphs
+- Do NOT list generic "Breakfast", "Lunch", "Dinner" unless it's a famous food spot
+- Focus on specific places, things to do, and unique experiences"""
 
     messages = [
         {"role": "system", "content": system_prompt},
@@ -210,16 +264,16 @@ IMPORTANT:
 
     full_response = ""
     # Stream tokens to the client in real-time
-    for token in client.chat_stream(messages, temperature=0.7):
+    for token in client.chat_stream(messages, temperature=0.7, max_tokens=5000):
         full_response += token
         yield token
 
-    # Update state
+    # FIX 2: Fire-and-forget JSON structuring in background thread.
+    # The user sees "done" immediately while we parse JSON behind the scenes.
+    _bg_executor.submit(_parse_plan_bg, client, system_prompt, full_response, state)
     state.phase = Phase.REFINEMENT
 
     extra = "\n\n---\nWant me to tweak anything? I can make it safer, faster, more comfortable, or change the base location. Or if you're happy with it, we're done!"
     yield extra
     full_response += extra
     state.add_message("assistant", full_response)
-
-

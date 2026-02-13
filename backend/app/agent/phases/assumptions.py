@@ -1,7 +1,8 @@
 """Assumptions phase handler."""
 
 import logging
-from typing import TYPE_CHECKING, Callable
+import concurrent.futures
+from typing import TYPE_CHECKING, Callable, Iterator
 
 from app.agent.formatters import format_constraints
 from app.agent.models import Assumptions, ConversationState
@@ -10,12 +11,36 @@ from app.agent.sanitizer import wrap_user_content
 from app.agent.tools import TOOL_DEFINITIONS, execute_tool
 from app.agent.utils import get_current_date_context
 
-from typing import TYPE_CHECKING, Callable, Iterator
-
 if TYPE_CHECKING:
     from app.agent.ai_client import AIClient
 
 logger = logging.getLogger(__name__)
+
+# Background thread pool for fire-and-forget JSON structuring
+_bg_executor = concurrent.futures.ThreadPoolExecutor(max_workers=2)
+
+
+def _parse_assumptions_bg(
+    client: "AIClient",
+    system_prompt: str,
+    full_response: str,
+    state: ConversationState,
+) -> None:
+    """Background task: parse streamed text into structured Assumptions."""
+    try:
+        structured_prompt = f"Provide the structured Assumptions JSON for: {full_response}"
+        assumptions = client.chat_structured(
+            [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": structured_prompt},
+            ],
+            Assumptions,
+            temperature=0.1,
+        )
+        state.assumptions = assumptions
+        logger.info("Background assumptions structuring completed successfully")
+    except Exception:
+        logger.exception("Background assumptions structuring failed")
 
 
 def generate_assumptions_stream(
@@ -46,17 +71,8 @@ Be clear and explicit about your assumptions for each category."""
         full_response += token
         yield token
 
-    # Background structured call for state update
-    structured_prompt = f"Provide the structured Assumptions JSON for: {full_response}"
-    assumptions = client.chat_structured(
-        [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": structured_prompt},
-        ],
-        Assumptions,
-        temperature=0.1,
-    )
-    state.assumptions = assumptions
+    # Fire-and-forget: parse assumptions in background
+    _bg_executor.submit(_parse_assumptions_bg, client, system_prompt, full_response, state)
 
     extra = "\n\n**Look good? Or want me to change anything?**"
     state.awaiting_confirmation = True
@@ -104,17 +120,8 @@ Include assumptions about incorporating these specific interests into the plan."
         full_response += token
         yield token
 
-    # Background structured call for state update
-    structured_prompt = f"Provide the structured Assumptions JSON for: {full_response}"
-    assumptions = client.chat_structured(
-        [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": structured_prompt},
-        ],
-        Assumptions,
-        temperature=0.1,
-    )
-    state.assumptions = assumptions
+    # Fire-and-forget: parse assumptions in background
+    _bg_executor.submit(_parse_assumptions_bg, client, system_prompt, full_response, state)
 
     extra = "\n\n**Look good? Or want me to change anything?**"
     state.awaiting_confirmation = True

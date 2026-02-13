@@ -229,7 +229,7 @@ class TravelAgent:
             answers,
             self._initial_extraction,
             self.language_code,
-            on_status=self._emit_status,
+            search_results=self.search_results,
         )
 
     def confirm_proceed_stream(self, proceed: bool) -> Iterator[str]:
@@ -254,21 +254,25 @@ class TravelAgent:
         additional_interests: Optional[str] = None,
     ) -> Iterator[str]:
         """Handle assumptions confirmation with token streaming."""
+        import time
         from app.agent.phases import assumptions
 
         if not confirmed and not modifications:
             yield "Please let me know what changes you'd like to make."
             return
 
+        # Wait-guard: background assumptions parse may still be running
+        if not self.state.assumptions:
+            for _ in range(20):  # Wait up to 10s
+                if self.state.assumptions:
+                    break
+                time.sleep(0.5)
+
         # If user has modifications or additional interests, we might need more research
         if modifications or additional_interests:
             self._emit_status("Researching your preferences...")
             interests = f"{modifications or ''} {additional_interests or ''}".strip()
             self.user_interests.append(interests)
-
-            # In streaming mode, we'll first generate updated assumptions then proceed to plan
-            # Or we can just jump to plan generation with these interests incorporated.
-            # Let's jump to plan generation for a smoother experience.
 
         self._emit_status("Creating your itinerary...")
         self.state.phase = Phase.PLANNING
@@ -279,12 +283,11 @@ class TravelAgent:
             self.user_interests,
             on_tool_call=self._handle_tool_call,
             language_code=self.language_code,
-            on_status=self._emit_status,
         )
 
     def refine_plan_stream(self, refinement_type: str) -> Iterator[str]:
         """Refine the plan with token streaming."""
         self._emit_status(f"Making it {refinement_type}...")
-        return refinement.refine_plan_stream(
+        yield from refinement.refine_plan_stream(
             self.client, self.state, refinement_type, self.language_code
         )

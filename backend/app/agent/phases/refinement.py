@@ -1,6 +1,8 @@
 """Refinement phase handler."""
 
 import logging
+import time
+import concurrent.futures
 from typing import TYPE_CHECKING
 
 from app.agent.formatters import format_plan
@@ -16,6 +18,34 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Shared background executor for fire-and-forget JSON structuring
+_bg_executor = concurrent.futures.ThreadPoolExecutor(max_workers=2)
+
+
+def _parse_refined_plan_bg(
+    client: "AIClient",
+    system_prompt: str,
+    full_response: str,
+    state: ConversationState,
+) -> None:
+    """Background task: parse refined text into structured TravelPlan."""
+    try:
+        structured_prompt = (
+            f"Provide the structured TravelPlan JSON for this updated itinerary: {full_response}"
+        )
+        plan = client.chat_structured(
+            [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": structured_prompt},
+            ],
+            TravelPlan,
+            temperature=0.3,
+        )
+        state.current_plan = plan
+        logger.info("Background refinement structuring completed successfully")
+    except Exception:
+        logger.exception("Background refinement structuring failed")
+
 
 def refine_plan_stream(
     client: "AIClient",
@@ -30,19 +60,18 @@ def refine_plan_stream(
     if result.injection_detected:
         logger.warning("Possible prompt injection in refinement: %s", result.flags)
 
-    current_plan_text = ""
-    if state.current_plan:
-        current_plan_text = format_plan(state.current_plan)
-    else:
-        # Fallback: find the last assistant message which should be the plan text
-        for msg in reversed(state.messages):
-            if msg.role == "assistant":
-                current_plan_text = msg.content
+    # Wait-guard: if background parse from previous step hasn't finished yet
+    if not state.current_plan:
+        for _ in range(20):  # Wait up to 10s
+            if state.current_plan:
                 break
-        
-        if not current_plan_text:
-            yield "No plan to refine. Please complete the planning phase first."
-            return
+            time.sleep(0.5)
+
+    if not state.current_plan:
+        yield "No plan to refine. Please complete the planning phase first."
+        return
+
+    current_plan_text = format_plan(state.current_plan)
 
     system_prompt = get_phase_prompt("refinement", language_code)
     budget_currency = detect_budget_currency(state)
@@ -66,6 +95,9 @@ ALL prices MUST be in {budget_currency}."""
     for token in client.chat_stream(messages, temperature=0.7):
         full_response += token
         yield token
+
+    # Fire-and-forget: parse refined plan in background
+    _bg_executor.submit(_parse_refined_plan_bg, client, system_prompt, full_response, state)
 
     extra = "\n\n---\nAnything else you'd like to change?"
     yield extra

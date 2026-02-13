@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { SidebarProvider } from "@/components/ui/sidebar";
+import { BackendKeepAlive } from "@/components/BackendKeepAlive";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -38,6 +39,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="antialiased">
+        <BackendKeepAlive />
         <TooltipProvider>
           <SidebarProvider defaultOpen={false}>
             {children}

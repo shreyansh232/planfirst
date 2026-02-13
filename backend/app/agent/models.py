@@ -84,6 +84,10 @@ class InitialExtraction(BaseModel):
         default_factory=list,
         description="Any specific interests or activities mentioned",
     )
+    language_code: Optional[str] = Field(
+        default=None,
+        description="Detected language code of the user (e.g., 'en', 'hi', 'fr')",
+    )
 
 
 class TravelConstraints(BaseModel):
