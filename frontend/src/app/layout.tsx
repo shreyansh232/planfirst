@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { BackendKeepAlive } from "@/components/BackendKeepAlive";
+import { Analytics } from '@vercel/analytics/next';
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -43,6 +44,7 @@ export default function RootLayout({
         <TooltipProvider>
           <SidebarProvider defaultOpen={false}>
             {children}
+            <Analytics />
           </SidebarProvider>
         </TooltipProvider>
       </body>
