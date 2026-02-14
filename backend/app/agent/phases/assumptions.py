@@ -49,7 +49,8 @@ def generate_assumptions_stream(
     language_code: str | None = None,
 ) -> Iterator[str]:
     """Generate and present assumptions with token streaming."""
-    system_prompt = get_phase_prompt("assumptions", language_code)
+    vibe = state.vibe or (state.constraints.vibe if state.constraints else None)
+    system_prompt = get_phase_prompt("assumptions", language_code, vibe=vibe)
     constraints_text = format_constraints(state)
     risk_text = ""
     if state.risk_assessment:
@@ -89,7 +90,8 @@ def generate_assumptions_with_interests_stream(
     language_code: str | None = None,
 ) -> Iterator[str]:
     """Generate assumptions incorporating user's interests with token streaming."""
-    system_prompt = get_phase_prompt("assumptions", language_code)
+    vibe = state.vibe or (state.constraints.vibe if state.constraints else None)
+    system_prompt = get_phase_prompt("assumptions", language_code, vibe=vibe)
     constraints_text = format_constraints(state)
     risk_text = ""
     if state.risk_assessment:
@@ -145,7 +147,8 @@ def generate_assumptions(
     Returns:
         Assumptions text for user confirmation.
     """
-    system_prompt = get_phase_prompt("assumptions", language_code)
+    vibe = state.vibe or (state.constraints.vibe if state.constraints else None)
+    system_prompt = get_phase_prompt("assumptions", language_code, vibe=vibe)
     constraints_text = format_constraints(state)
     risk_text = ""
     if state.risk_assessment:
@@ -262,7 +265,8 @@ def generate_assumptions_with_interests(
     Returns:
         Assumptions text for user confirmation.
     """
-    system_prompt = get_phase_prompt("assumptions", language_code)
+    vibe = state.vibe or (state.constraints.vibe if state.constraints else None)
+    system_prompt = get_phase_prompt("assumptions", language_code, vibe=vibe)
     constraints_text = format_constraints(state)
     risk_text = ""
     if state.risk_assessment:
@@ -328,7 +332,8 @@ def update_assumptions_with_interests(
         search_results: List of previous search results.
         language_code: Optional user's preferred language code.
     """
-    system_prompt = get_phase_prompt("assumptions", language_code)
+    vibe = state.vibe or (state.constraints.vibe if state.constraints else None)
+    system_prompt = get_phase_prompt("assumptions", language_code, vibe=vibe)
     constraints_text = format_constraints(state)
     risk_text = ""
     if state.risk_assessment:

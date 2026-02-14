@@ -30,9 +30,10 @@ class TravelAgent:
         api_key: Optional[str] = None,
         model: str = DEFAULT_MODEL,
         fast_model: Optional[str] = FAST_MODEL,
-        on_search: Optional[Callable[[str], None]] = None,
+            on_search: Optional[Callable[[str], None]] = None,
         on_status: Optional[Callable[[str], None]] = None,
         language_code: Optional[str] = None,
+        vibe: Optional[str] = None,
     ):
         """Initialize the travel agent.
 
@@ -41,6 +42,7 @@ class TravelAgent:
             model: Model to use via OpenRouter.
             on_search: Optional callback when a web search is performed.
             language_code: Optional user's preferred language code (e.g., 'fr', 'es').
+            vibe: Optional aesthetic/vibe for the trip (e.g., "Cyberpunk", "Wes Anderson").
         """
         self.client = AIClient(api_key=api_key, model=model)
         self.fast_client = AIClient(
@@ -48,6 +50,8 @@ class TravelAgent:
             model=fast_model or DEFAULT_MODEL,
         )
         self.state = ConversationState()
+        if vibe:
+            self.state.vibe = vibe
         self.on_search = on_search
         self.search_results: list[str] = []  # Store search results for context
         self.user_interests: list[str] = []  # Store user interests/adjustments

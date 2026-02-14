@@ -109,6 +109,9 @@ class TravelConstraints(BaseModel):
         default_factory=list,
         description="Specific interests or activities the traveler wants (e.g., tech events, hiking, food tours)",
     )
+    vibe: Optional[str] = Field(
+        default=None, description="The requested vibe/aesthetic for the trip"
+    )
 
 
 class Assumptions(BaseModel):
@@ -303,6 +306,9 @@ class ConversationState(BaseModel):
     )
     awaiting_confirmation: bool = Field(
         default=False, description="Waiting for user confirmation"
+    )
+    vibe: Optional[str] = Field(
+        default=None, description="The requested vibe/aesthetic for the trip"
     )
 
     def add_message(self, role: str, content: str) -> None:

@@ -73,7 +73,8 @@ def refine_plan_stream(
 
     current_plan_text = format_plan(state.current_plan)
 
-    system_prompt = get_phase_prompt("refinement", language_code)
+    vibe = state.vibe or (state.constraints.vibe if state.constraints else None)
+    system_prompt = get_phase_prompt("refinement", language_code, vibe=vibe)
     budget_currency = detect_budget_currency(state, refinement_type)
 
     wrapped_refinement = wrap_user_content(refinement_type, "user_refinement")
@@ -134,7 +135,8 @@ def refine_plan(
 
     current_plan_text = format_plan(state.current_plan)
 
-    system_prompt = get_phase_prompt("refinement", language_code)
+    vibe = state.vibe or (state.constraints.vibe if state.constraints else None)
+    system_prompt = get_phase_prompt("refinement", language_code, vibe=vibe)
 
     budget_currency = detect_budget_currency(state, refinement_type)
 

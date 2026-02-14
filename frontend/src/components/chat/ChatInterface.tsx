@@ -20,6 +20,7 @@ import {
 import type { AuthUser, StreamEvent, StreamMeta, DestinationImage } from "@/lib/api";
 import { MarkdownRenderer } from "./MarkdownRenderer";
 import { ImageCarousel } from "./ImageCarousel";
+import { VibeSelector } from "./VibeSelector";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -36,11 +37,11 @@ interface Message {
 interface ChatInterfaceProps {
   initialPrompt?: string;
   initialTripId?: string | null;
+  initialVibe?: string | null;
   user?: AuthUser | null;
   loading?: boolean;
   onSignOut?: () => void;
 }
-
 type NextAction =
   | "text_input"
   | "proceed_confirm"
@@ -56,6 +57,7 @@ type NextAction =
 export function ChatInterface({
   initialPrompt = "",
   initialTripId = null,
+  initialVibe = null,
   user,
 }: ChatInterfaceProps) {
   const router = useRouter();
@@ -69,6 +71,7 @@ export function ChatInterface({
   const [hasHighRisk, setHasHighRisk] = useState(false);
   const [restored, setRestored] = useState(false);
   const [streamingHasDelta, setStreamingHasDelta] = useState(false);
+  const [selectedVibe, setSelectedVibe] = useState<string | null>(initialVibe);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const startedRef = useRef(false);
@@ -110,6 +113,7 @@ export function ChatInterface({
       setNextAction("text_input");
       setHasHighRisk(false);
       setRestored(true);
+      setSelectedVibe(null);
       startedRef.current = false;
       startInFlightRef.current = false;
       actionInFlightRef.current = false;
@@ -274,7 +278,12 @@ export function ChatInterface({
         if (!force) {
           addMessage("user", prompt);
         }
-        const stream = await startTripTokenStream(prompt);
+        if (!force) {
+          addMessage("user", prompt);
+        }
+        // Pass the selected vibe only if it's the initial start
+        console.log("Starting trip with vibe:", selectedVibe);
+        const stream = await startTripTokenStream(prompt, selectedVibe || undefined);
         await consumeStream(stream, () => "text_input");
       } catch (err) {
         handleError(err);
@@ -282,7 +291,7 @@ export function ChatInterface({
         setIsLoading(false);
         startInFlightRef.current = false;
       }
-  }, [initialPrompt, consumeStream, handleError, addMessage]);
+  }, [initialPrompt, consumeStream, handleError, addMessage, selectedVibe]);
 
   const doClarify = useCallback(
     async (answers: string) => {
@@ -610,6 +619,13 @@ export function ChatInterface({
               <p className="text-muted-foreground max-w-sm">
                 Describe your dream destination and we&apos;ll help you plan the perfect itinerary.
               </p>
+              
+              <div className="mt-8 w-full max-w-2xl text-left">
+                <VibeSelector 
+                  selectedVibe={selectedVibe} 
+                  onSelect={setSelectedVibe} 
+                />
+              </div>
             </div>
           )}
 

@@ -252,6 +252,8 @@ def process_clarification(
     initial_extraction: InitialExtraction | None,
 ) -> TravelConstraints:
     """Process user's answers to clarification questions.
+    
+    logger.info(f"Processing clarification. State vibe: {state.vibe}")
 
     Merges answers with any info already extracted from the initial prompt.
 
@@ -311,4 +313,6 @@ Merge all info together. The clarification answers take priority over initial me
     constraints = client.chat_structured(messages, TravelConstraints, temperature=0.1)
     constraints.origin = state.origin
     constraints.destination = state.destination
+    if state.vibe:
+        constraints.vibe = state.vibe
     return constraints

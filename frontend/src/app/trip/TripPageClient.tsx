@@ -13,6 +13,7 @@ export function TripPageClient() {
   const searchParams = useSearchParams();
   const [prompt, setPrompt] = useState<string | null>(null);
   const [initialTripId, setInitialTripId] = useState<string | null>(null);
+  const [initialVibe, setInitialVibe] = useState<string | null>(null);
   const { user, loading, signOut } = useProfile();
 
   useEffect(() => {
@@ -24,15 +25,19 @@ export function TripPageClient() {
 
   useEffect(() => {
     const initial = searchParams.get("prompt");
+    const vibe = searchParams.get("vibe");
     const tripIdParam =
       searchParams.get("tripId") || searchParams.get("id");
+    
     if (tripIdParam) {
       setInitialTripId(tripIdParam);
       setPrompt(null);
+      setInitialVibe(null);
     } else {
       // No tripId - this is a new trip, reset both states
       setInitialTripId(null);
       setPrompt(initial?.trim() || "");
+      setInitialVibe(vibe);
     }
   }, [router, searchParams]);
 
@@ -49,6 +54,7 @@ export function TripPageClient() {
           key={initialTripId || "new"} // Force remount when switching trips
           initialPrompt={prompt || ""}
           initialTripId={initialTripId}
+          initialVibe={initialVibe}
           user={user}
           loading={loading}
           onSignOut={signOut}

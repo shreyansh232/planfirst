@@ -24,6 +24,7 @@ class TravelConstraints(BaseModel):
     budget: str | None = None
     comfort_level: str | None = None
     interests: list[str] = Field(default_factory=list)
+    vibe: str | None = None
 
 
 class RiskAssessment(BaseModel):
@@ -100,6 +101,7 @@ class TripCreate(BaseModel):
 
     origin: str = Field(..., min_length=1, max_length=255)
     destination: str = Field(..., min_length=1, max_length=255)
+    vibe: str | None = Field(None, max_length=100, description="Aesthetic/Vibe for the trip")
 
 
 class TripUpdate(BaseModel):

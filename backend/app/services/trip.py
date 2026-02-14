@@ -147,6 +147,7 @@ async def start_trip_conversation(
     db: AsyncSession,
     user_id: UUID,
     prompt: str,
+    vibe: Optional[str] = None,
     on_status: Optional[Callable[[str], None]] = None,
 ) -> AgentResponse:
     """Start a new trip planning conversation.
@@ -165,6 +166,7 @@ async def start_trip_conversation(
     Returns:
         AgentResponse with clarification questions.
     """
+    logger.info(f"Starting trip conversation with vibe: {vibe}")
     # Enforce plan limits for free users (1 session per 2 days)
     await _enforce_plan_limit(db, user_id)
 
@@ -175,6 +177,7 @@ async def start_trip_conversation(
         api_key=settings.openrouter_api_key,
         on_status=on_status,
         language_code=language_code,
+        vibe=vibe,
     )
 
     # AI call — run in thread pool so we don't block the event loop

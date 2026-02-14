@@ -2,23 +2,29 @@
 
 import { useState, useEffect, Suspense } from "react";
 import { motion } from "framer-motion";
-import { ArrowRight, Compass, Shield, Zap, Globe } from "lucide-react";
+import { ArrowRight, Compass, Shield, Zap, Globe, Sparkles } from "lucide-react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { ChatHistorySidebar } from "@/components/layout/ChatHistorySidebar";
 import { Header } from "@/components/layout/Header";
 import { SidebarInset } from "@/components/ui/sidebar";
 import { useProfile } from "@/lib/useProfile";
+import { VibeSelector, VIBES } from "@/components/chat/VibeSelector";
+import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 const Home = () => {
   const router = useRouter();
   const [prompt, setPrompt] = useState("");
+  const [selectedVibe, setSelectedVibe] = useState<string | null>(null);
+  const [isVibeSelectorOpen, setIsVibeSelectorOpen] = useState(false);
   const { user, loading, signOut } = useProfile();
 
   // Typewriter effect
   const [placeholder, setPlaceholder] = useState("");
   
   useEffect(() => {
+    // ... existing typewriter effect code ...
     const texts = [
       "Plan a trip to Chicago from NYC for a week with a $1,500 budget...",
       "A 10-day hiking adventure in Switzerland starting from Zurich...",
@@ -65,14 +71,22 @@ const Home = () => {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!prompt.trim()) return;
-    const encoded = encodeURIComponent(prompt.trim());
-    router.push(`/trip?prompt=${encoded}`);
+    const encodedPrompt = encodeURIComponent(prompt.trim());
+    let url = `/trip?prompt=${encodedPrompt}`;
+    if (selectedVibe) {
+      url += `&vibe=${encodeURIComponent(selectedVibe)}`;
+    }
+    router.push(url);
   };
 
   const handleAutoStart = () => {
     if (!prompt.trim()) return;
-    const encoded = encodeURIComponent(prompt.trim());
-    router.push(`/trip?prompt=${encoded}`);
+    const encodedPrompt = encodeURIComponent(prompt.trim());
+    let url = `/trip?prompt=${encodedPrompt}`;
+    if (selectedVibe) {
+      url += `&vibe=${encodeURIComponent(selectedVibe)}`;
+    }
+    router.push(url);
   };
 
   return (
@@ -124,7 +138,40 @@ const Home = () => {
                       aria-label="Describe your trip"
                       className="w-full h-24 resize-none text-base bg-transparent text-foreground placeholder:text-muted-foreground/60 focus:outline-none font-body"
                     />
-                    <div className="flex justify-end pt-2">
+                    <div className="flex justify-between items-center pt-2">
+                      <Popover open={isVibeSelectorOpen} onOpenChange={setIsVibeSelectorOpen}>
+                        <PopoverTrigger asChild>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className={`rounded-full h-10 px-4 gap-2 border-border/50 bg-background/50 hover:bg-background ${selectedVibe ? 'text-accent border-accent/30 bg-accent/5' : 'text-muted-foreground'}`}
+                          >
+                            <Sparkles className={`w-4 h-4 ${selectedVibe ? 'fill-accent/20' : ''}`} />
+                            <span className="text-sm font-medium">
+                              {selectedVibe ? (
+                                <>
+                                  <span className="sm:hidden">
+                                    {VIBES.find(v => v.id === selectedVibe)?.mobileLabel || selectedVibe}
+                                  </span>
+                                  <span className="hidden sm:inline">
+                                    {VIBES.find(v => v.id === selectedVibe)?.label || selectedVibe}
+                                  </span>
+                                </>
+                              ) : "Vibe"}
+                            </span>
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-[90vw] sm:w-[500px] p-4 rounded-2xl" align="start">
+                          <VibeSelector 
+                            selectedVibe={selectedVibe} 
+                            onSelect={(v) => {
+                              setSelectedVibe(v);
+                              setIsVibeSelectorOpen(false);
+                            }} 
+                          />
+                        </PopoverContent>
+                      </Popover>
+
                       <button
                         type="submit"
                         className="inline-flex items-center gap-2 bg-primary text-primary-foreground px-6 py-2.5 rounded-full text-sm font-medium hover:opacity-90 transition-opacity cursor-pointer"

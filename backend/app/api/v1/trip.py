@@ -95,6 +95,11 @@ class StartTripRequest(BaseModel):
             "'Plan a trip from Mumbai to Japan in March, 7 days, solo'"
         ),
     )
+    vibe: Optional[str] = Field(
+        None,
+        max_length=100,
+        description="Optional aesthetic/vibe (e.g., 'Cyberpunk', 'Relaxed')",
+    )
 
 
 class ClarifyRequest(BaseModel):
@@ -158,7 +163,9 @@ async def start_trip(
     the response message asks for them and ``trip_id`` will be ``null`` —
     call this endpoint again with a more complete prompt.
     """
-    return await trip_service.start_trip_conversation(db, current_user.id, body.prompt)
+    return await trip_service.start_trip_conversation(
+        db, current_user.id, body.prompt, vibe=body.vibe
+    )
 
 
 @router.post("/start/stream")
@@ -177,6 +184,7 @@ async def start_trip_stream(
             db,
             current_user.id,
             body.prompt,
+            vibe=body.vibe,
             on_status=_make_status_callback(status_queue),
         )
 

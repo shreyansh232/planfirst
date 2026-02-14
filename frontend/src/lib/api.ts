@@ -396,17 +396,21 @@ export async function getProfile(): Promise<AuthUser> {
 // Trip conversation (stateful, phase-by-phase)
 // ---------------------------------------------------------------------------
 
-export async function startTrip(prompt: string): Promise<AgentResponse> {
+export async function startTrip(
+  prompt: string,
+  vibe?: string,
+): Promise<AgentResponse> {
   return apiFetch<AgentResponse>("/trips/start", {
     method: "POST",
-    body: JSON.stringify({ prompt }),
+    body: JSON.stringify({ prompt, vibe }),
   });
 }
 
 export async function startTripStream(
   prompt: string,
+  vibe?: string,
 ): Promise<AsyncGenerator<StreamEvent, void, void>> {
-  return streamFetch("/trips/start/stream", { prompt });
+  return streamFetch("/trips/start/stream", { prompt, vibe });
 }
 
 export async function clarifyTrip(
@@ -497,11 +501,12 @@ export async function refineTripStream(
 
 export async function startTripTokenStream(
   prompt: string,
+  vibe?: string,
 ): Promise<AsyncGenerator<StreamEvent, void, void>> {
   // backend currently doesn't have /start/token-stream, 
   // but it has /start/stream which chunks text.
   // For consistency, let's use the available stream endpoints.
-  return streamFetch("/trips/start/stream", { prompt });
+  return streamFetch("/trips/start/stream", { prompt, vibe });
 }
 
 export async function clarifyTripTokenStream(

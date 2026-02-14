@@ -152,12 +152,120 @@ Briefly explain what changed and why (1-2 sentences, not a paragraph).
 Keep the same concise format."""
 
 
-def get_phase_prompt(phase: str, language_code: str | None = None) -> str:
+
+
+
+VIBE_PROMPTS = {
+    "Cyberpunk": (
+        "VIBE: CYBERPUNK.\n"
+        "STRUCTURAL BIAS:\n"
+        "- Density: High. Pack the evenings.\n"
+        "- Pacing: Late start (11 AM), late end (2 AM).\n"
+        "- Budget: Allocate higher % to tech/gaming experiences and unique transport.\n"
+        "CONTENT PRIORITIES:\n"
+        "- Focus exclusively on the future: Night markets, arcades, electronics districts, capsule hotels, sky-bridges, underground bars.\n"
+        "- Avoid: Generic parks, traditional malls, sunlight-heavy morning activities.\n"
+        "VIBE DISTRIBUTION RULE:\n"
+        "- At least 60% of activities must clearly reflect this vibe.\n"
+        "ELIMINATION RULE:\n"
+        "- If an activity does not feel 'high-tech' or 'dystopian', replace it."
+    ),
+    "Wes Anderson": (
+        "VIBE: WES ANDERSON.\n"
+        "STRUCTURAL BIAS:\n"
+        "- Density: Medium. Allow time for visual appreciation.\n"
+        "- Pacing: Symmetrical. Morning coffee -> Museum -> Grand Lunch -> Park -> Theater.\n"
+        "- Budget: Allocate higher % to distinct, historic hotels and pastries.\n"
+        "CONTENT PRIORITIES:\n"
+        "- Focus on symmetry, pastel colors, nostalgia: Historic grand hotels, funiculars, quirky museums, retro bakeries, opera houses.\n"
+        "- Avoid: Modern glass skyscrapers, chain restaurants, chaotic markets.\n"
+        "VIBE DISTRIBUTION RULE:\n"
+        "- At least 60% of activities must clearly reflect this vibe.\n"
+        "ELIMINATION RULE:\n"
+        "- If a spot isn't visually distinct, quirky, or pastel, skip it."
+    ),
+    "Quiet Luxury": (
+        "VIBE: QUIET LUXURY.\n"
+        "STRUCTURAL BIAS:\n"
+        "- Density: Low. Maximum 2 major activities per day.\n"
+        "- Pacing: Slow, unhurried. 2-hour lunches.\n"
+        "- Budget: High allocation for dining and private transfers.\n"
+        "CONTENT PRIORITIES:\n"
+        "- Focus on exclusivity and wellness: Hidden boutique hotels, private gallery viewings, omakase dining, spa retreats.\n"
+        "- Avoid: Crowded tourist hotspots, loud nightlife, public transit.\n"
+        "VIBE DISTRIBUTION RULE:\n"
+        "- At least 60% of activities must be 'exclusive' or 'private'.\n"
+        "ELIMINATION RULE:\n"
+        "- If it involves standing in line or crowds, remove it."
+    ),
+    "Nature & Solitude": (
+        "VIBE: NATURE & SOLITUDE.\n"
+        "STRUCTURAL BIAS:\n"
+        "- Density: Low to Medium. Long blocks for hiking/exploring.\n"
+        "- Pacing: Early sunrise starts, quiet evenings.\n"
+        "- Budget: Allocate more to eco-lodges and transport to outskirts.\n"
+        "CONTENT PRIORITIES:\n"
+        "- Focus on sensory details: Early morning hikes, hidden beaches, botanical gardens, stargazing spots.\n"
+        "- Avoid: Shopping malls, city centers, busy intersections.\n"
+        "VIBE DISTRIBUTION RULE:\n"
+        "- At least 60% of activities must be outdoors or nature-focused.\n"
+        "ELIMINATION RULE:\n"
+        "- If it's indoors or loud, replace it with a park or trail."
+    ),
+    "High Energy": (
+        "VIBE: HIGH ENERGY.\n"
+        "STRUCTURAL BIAS:\n"
+        "- Density: Maximum. No gaps.\n"
+        "- Pacing: Fast. 10 AM to 4 AM.\n"
+        "- Budget: Allocate more to food, drinks, and activities.\n"
+        "CONTENT PRIORITIES:\n"
+        "- Focus on adrenaline and crowds: Street food crawls, karaoke, nightclubs, busy markets, interactive museums.\n"
+        "- Avoid: Slow walking tours, quiet parks, meditation centers.\n"
+        "VIBE DISTRIBUTION RULE:\n"
+        "- At least 60% of activities must be active or social.\n"
+        "ELIMINATION RULE:\n"
+        "- Replace slow-paced activities with higher-energy alternatives."
+    ),
+    "History Buff": (
+        "VIBE: HISTORY BUFF.\n"
+        "STRUCTURAL BIAS:\n"
+        "- Density: Medium. Deep dives required.\n"
+        "- Pacing: Standard. 9 AM to 9 PM.\n"
+        "- Budget: Allocate more to guides and tickets.\n"
+        "CONTENT PRIORITIES:\n"
+        "- Focus on the past: UNESCO sites, ruins, national museums, old quarters, heritage hotels.\n"
+        "- Avoid: Trendy modern cafes, shopping districts, 'Instagram traps'.\n"
+        "VIBE DISTRIBUTION RULE:\n"
+        "- At least 60% of activities must be historical or cultural.\n"
+        "ELIMINATION RULE:\n"
+        "- If it was built in the last 20 years and isn't a museum, skip it."
+    ),
+    "Local Immersion": (
+        "VIBE: LOCAL IMMERSION.\n"
+        "STRUCTURAL BIAS:\n"
+        "- Density: Medium. Allow for wandering.\n"
+        "- Pacing: Flexible. Match local rhythm.\n"
+        "- Budget: Spend on local food and small businesses.\n"
+        "CONTENT PRIORITIES:\n"
+        "- Focus on authenticity: Neighborhood izakayas, community parks, family-run shops, residential districts.\n"
+        "- Avoid: Top 10 tourist landmarks, international chains, English-menu-only spots.\n"
+        "VIBE DISTRIBUTION RULE:\n"
+        "- At least 60% of activities must be non-touristy.\n"
+        "ELIMINATION RULE:\n"
+        "- If it's on the cover of a guidebook, find a local alternative."
+    ),
+}
+
+
+def get_phase_prompt(
+    phase: str, language_code: str | None = None, vibe: str | None = None
+) -> str:
     """Get the system prompt for a specific phase.
 
     Args:
         phase: The planning phase (clarification, feasibility, etc.)
         language_code: Optional user's preferred language code (e.g., 'fr', 'es')
+        vibe: Optional aesthetic/vibe for the trip.
 
     Returns:
         Complete system prompt with language instruction if provided
@@ -171,6 +279,13 @@ def get_phase_prompt(phase: str, language_code: str | None = None) -> str:
     }
 
     prompt = base_prompts.get(phase, SYSTEM_PROMPT_BASE)
+
+    # Inject Vibe instruction if present
+    if vibe:
+        vibe_instruction = VIBE_PROMPTS.get(
+            vibe, f"VIBE: {vibe}. Curate the itinerary to match this aesthetic."
+        )
+        prompt = f"{prompt}\n\n{vibe_instruction}"
 
     # Add language instruction if provided
     if language_code:

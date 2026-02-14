@@ -54,7 +54,8 @@ def _gather_planning_research(
     language_code: str | None = None,
 ) -> str:
     """Helper to gather planning-specific info via web search."""
-    system_prompt = get_phase_prompt("planning", language_code)
+    vibe = state.vibe or (state.constraints.vibe if state.constraints else None)
+    system_prompt = get_phase_prompt("planning", language_code, vibe=vibe)
     constraints_text = format_constraints(state)
     assumptions_text = ""
     if state.assumptions:
@@ -131,7 +132,8 @@ def generate_plan(
     )
     search_results.append(planning_research)
 
-    system_prompt = get_phase_prompt("planning", language_code)
+    vibe = state.vibe or (state.constraints.vibe if state.constraints else None)
+    system_prompt = get_phase_prompt("planning", language_code, vibe=vibe)
     constraints_text = format_constraints(state)
     assumptions_text = ""
     if state.assumptions:
@@ -213,7 +215,8 @@ def generate_plan_stream(
         )
         search_results.append(planning_research)
 
-    system_prompt = get_phase_prompt("planning", language_code)
+    vibe = state.vibe or (state.constraints.vibe if state.constraints else None)
+    system_prompt = get_phase_prompt("planning", language_code, vibe=vibe)
     constraints_text = format_constraints(state)
     assumptions_text = ""
     if state.assumptions:
