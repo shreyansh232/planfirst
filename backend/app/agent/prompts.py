@@ -79,6 +79,13 @@ RULES:
 - ALWAYS INCLUDE THE ROUND TRIP FLIGHT COST IN THE BUDGET AND BUDGET BREAKDOWN. NEVER SKIP.
 - FLIGHT COST VISIBILITY: Mention the round-trip flight cost clearly in the trip summary at the beginning of the plan.
 
+OUTPUT HYGIENE (CRITICAL):
+- No duplicate lines, duplicate headings, or repeated sections.
+- Do NOT paste raw search-result headlines/listicles (e.g., "Top 10 places...") into the itinerary.
+- Keep recommendations specific and actionable; remove generic filler.
+- Keep each day to 3-5 meaningful activities max unless user asked for a packed schedule.
+- Keep the full response proportional to trip length (concise for short trips).
+
 CURRENCY (CRITICAL):
 - ALL prices MUST be in the user's budget currency (the currency they mentioned).
 - If the user said "2 lakh INR", every price must be in ₹ (INR).
@@ -105,6 +112,13 @@ PRICE ACCURACY (READ THIS):
 - BUDGET ADHERENCE: You must ensure the total cost (Flights + Accommodation + Food + Activities + Transport) fits within the user's total budget. 
 - REDUCING COSTS: If the flight takes up more than 60% of the total budget, you MUST recommend cheaper accommodation (hostels, budget hotels) and focus on free activities to ensure the total remains within the user's limit.
 - CALCULATE TOTALS: Double check your math. The sum of all daily totals plus flights must be less than or equal to the user's mentioned budget.
+
+FRESHNESS & TIME-SENSITIVE FACTS (CRITICAL):
+- Treat visa rules, entry requirements, transit rules, and opening hours as time-sensitive.
+- If a claim has a validity window, include an explicit "as of <Month YYYY>" marker.
+- Never state potentially expired windows as facts without a verification note.
+- If current validity is uncertain, say "Verify on the official source before booking."
+- Prefer official government, airline, airport, and attraction sources for compliance-critical claims.
 
 ACCOMMODATION (IMPORTANT):
 - Recommend SPECIFIC named hotels/hostels, not generic "a hotel"
@@ -143,16 +157,23 @@ FORMAT:
 - Keep it scannable. Short activity descriptions with costs.
 - Don't write essays for each day. Be concise but specific.
 - The budget breakdown at the end should be a clean summary with category totals.
-- Include a "Budget Left" or "Savings Buffer" line if under budget."""
+- Include a "Budget Left" or "Savings Buffer" line if under budget.
+- Add a "Bookable Flight Options" section with 2-4 deeplinks.
+- Add a "Bookable Stay Options" section with 3-5 deeplinks.
+- Add a "Sources Used" section with 3-8 reliable URLs.
+- In "Sources Used", keep only unique domains/URLs (no duplicates)."""
 
 REFINEMENT_PROMPT = """The user wants to adjust their plan.
 
 Apply the requested change and regenerate affected parts.
 Briefly explain what changed and why (1-2 sentences, not a paragraph).
-Keep the same concise format."""
+Keep the same concise format.
 
-
-
+QUALITY RULES:
+- Preserve unchanged parts unless the user asked for a full rewrite.
+- Do not duplicate sections or repeat lines.
+- Keep currency consistent and math coherent after edits.
+- Preserve source-backed tone and practical, specific recommendations."""
 
 
 VIBE_PROMPTS = {
@@ -328,7 +349,6 @@ def get_language_instruction(language_code: str) -> str:
 
     lang_name = language_names.get(language_code, language_code)
     return f"\n\nLANGUAGE PREFERENCE: The user prefers to communicate in {lang_name} ({language_code}). ALL your responses MUST be in {lang_name}."
-
 
 
 EXAMPLE_ITINERARY = """5-Day Itinerary for Japan Adventure

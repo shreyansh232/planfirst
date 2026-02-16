@@ -17,9 +17,16 @@ import {
   ApiError,
   clearTokens,
 } from "@/lib/api";
-import type { AuthUser, StreamEvent, StreamMeta, DestinationImage } from "@/lib/api";
+import type {
+  AuthUser,
+  DestinationImage,
+  PlanMetaPayload,
+  StreamEvent,
+  StreamMeta,
+} from "@/lib/api";
 import { MarkdownRenderer } from "./MarkdownRenderer";
 import { ImageCarousel } from "./ImageCarousel";
+import { PlanInsightsPanel } from "./PlanInsightsPanel";
 import { VibeSelector } from "./VibeSelector";
 
 // ---------------------------------------------------------------------------
@@ -32,6 +39,7 @@ interface Message {
   content: string;
   phase?: string;
   images?: DestinationImage[];
+  planMeta?: PlanMetaPayload;
 }
 
 interface ChatInterfaceProps {
@@ -49,6 +57,35 @@ type NextAction =
   | "assumptions_confirm"
   | "modify_input"
   | "done";
+
+function toPlanMetaPayload(
+  planJson: Record<string, unknown> | null | undefined,
+): PlanMetaPayload | undefined {
+  if (!planJson) return undefined;
+
+  const confidenceRaw = planJson.confidence;
+  const sourcesRaw = planJson.sources;
+  const flightsRaw = planJson.flights;
+  const lodgingsRaw = planJson.lodgings;
+
+  const confidence =
+    confidenceRaw && typeof confidenceRaw === "object"
+      ? (confidenceRaw as PlanMetaPayload["confidence"])
+      : null;
+
+  return {
+    confidence,
+    sources: Array.isArray(sourcesRaw)
+      ? (sourcesRaw as PlanMetaPayload["sources"])
+      : [],
+    flights: Array.isArray(flightsRaw)
+      ? (flightsRaw as PlanMetaPayload["flights"])
+      : [],
+    lodgings: Array.isArray(lodgingsRaw)
+      ? (lodgingsRaw as PlanMetaPayload["lodgings"])
+      : [],
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Component
@@ -229,6 +266,18 @@ export function ChatInterface({
             ),
           );
         }
+        if (event.type === "plan_meta") {
+          if (!created) {
+            ensureMessage();
+          }
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === (initialMessageIdRef.current || id)
+                ? { ...msg, planMeta: event.data }
+                : msg,
+            ),
+          );
+        }
       }
 
       if (nextActionFromMeta) {
@@ -275,9 +324,6 @@ export function ChatInterface({
         pendingPromptRef.current = prompt;
         // Only add user message on the initial call (not force re-starts,
         // since handleSubmit already adds the user message before calling doStart).
-        if (!force) {
-          addMessage("user", prompt);
-        }
         if (!force) {
           addMessage("user", prompt);
         }
@@ -471,15 +517,29 @@ export function ChatInterface({
 
         // Map logic removed as components appear missing in current state
         
-        const mapped = tripMessages.map((msg, idx) => ({
+        const mapped: Message[] = tripMessages.map((msg, idx) => ({
           id: msg.id || `${msg.created_at}-${idx}`,
           role: msg.role as Message["role"],
           content: msg.content,
           phase: msg.phase ?? undefined,
         }));
-        
+
+        const persistedPlanMeta = toPlanMetaPayload(
+          tripData.latest_version?.plan_json as Record<string, unknown> | null,
+        );
         if (mapped.length > 0) {
-           setMessages(mapped);
+          if (persistedPlanMeta) {
+            const lastAssistantIndex = [...mapped]
+              .map((message) => message.role)
+              .lastIndexOf("assistant");
+            if (lastAssistantIndex >= 0) {
+              mapped[lastAssistantIndex] = {
+                ...mapped[lastAssistantIndex],
+                planMeta: persistedPlanMeta,
+              };
+            }
+          }
+          setMessages(mapped);
         }
         
         // Determine phase/action
@@ -632,14 +692,18 @@ export function ChatInterface({
           {displayMessages.map((message, index) => (
             <div
               key={`${message.id}-${index}`}
-              className={`flex ${
+              className={`flex w-full min-w-0 ${
                 message.role === "user" ? "justify-end" : "justify-start"
               }`}
             >
               {message.role === "assistant" && !message.content ? null : (
-                <div className={`flex items-start gap-3 max-w-[90%] ${
-                  message.role === "user" ? "flex-row-reverse" : ""
-                }`}>
+                <div
+                  className={`flex min-w-0 items-start gap-2 sm:gap-3 w-full ${
+                    message.role === "user"
+                      ? "justify-start flex-row-reverse"
+                      : "justify-start"
+                  }`}
+                >
                   {/* Avatar */}
                   {message.role === "user" ? (
                     <div className="mt-0.5 shrink-0 w-8 h-8 rounded-full overflow-hidden bg-accent border-2 border-accent">
@@ -670,8 +734,14 @@ export function ChatInterface({
                   )}
 
                   {/* Message Bubble */}
-                  <div className={`
-                    rounded-2xl px-5 py-4 shadow-sm
+                  <div
+                    className={`
+                    min-w-0 rounded-2xl px-4 py-4 sm:px-5 shadow-sm
+                    ${
+                      message.role === "assistant"
+                        ? "flex-1 min-w-0 sm:flex-none sm:max-w-[90%]"
+                        : "max-w-[92%] sm:max-w-[80%]"
+                    }
                     ${
                       message.role === "user"
                         ? "bg-accent text-white rounded-br-md"
@@ -679,12 +749,13 @@ export function ChatInterface({
                     }
                   `}
                   >
-                    <div className="prose prose-sm max-w-none dark:prose-invert">
+                    <div className="prose prose-sm min-w-0 max-w-none break-words dark:prose-invert">
                       {message.images && message.images.length > 0 && (
                         <ImageCarousel images={message.images} />
                       )}
                       <MarkdownRenderer content={message.content} />
                     </div>
+                    {message.planMeta && <PlanInsightsPanel meta={message.planMeta} />}
                   </div>
                 </div>
               )}
@@ -693,7 +764,7 @@ export function ChatInterface({
 
           {/* Action Cards */}
           {!isLoading && nextAction === "proceed_continue" && (
-            <div className="flex justify-start pl-11">
+            <div className="flex justify-start pl-0 sm:pl-11">
               <div className="bg-white rounded-2xl border border-border/30 shadow-sm p-5 max-w-md">
                 <div className="flex items-center gap-3 mb-4">
                   <div className="w-10 h-10 rounded-xl bg-green-50 flex items-center justify-center">
@@ -720,7 +791,7 @@ export function ChatInterface({
 
           {/* Loading Indicator */}
           {isLoading && !streamingHasDelta && (
-            <div className="flex justify-start pl-11">
+            <div className="flex justify-start pl-0 sm:pl-11">
               <div className="flex items-center gap-3 bg-white rounded-2xl border border-border/30 shadow-sm px-5 py-4">
                 <div className="w-8 h-8 rounded-full bg-accent/10 flex items-center justify-center">
                   <Loader2 className="w-4 h-4 text-accent animate-spin" />
@@ -735,7 +806,7 @@ export function ChatInterface({
       </div>
 
       {/* Input Area */}
-      <div className="bg-white border-t border-border/20 px-4 sm:px-6 py-5">
+      <div className="bg-white border-t border-border/20 px-4 sm:px-6 pt-4 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:py-5">
         <div className="max-w-3xl mx-auto">
           {isLoading ? (
             <div className="relative">
@@ -878,5 +949,3 @@ export function ChatInterface({
     </div>
   );
 }
-
-

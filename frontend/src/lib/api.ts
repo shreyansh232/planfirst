@@ -148,12 +148,61 @@ export interface DestinationImage {
   source: string;
 }
 
+export interface SourceAttribution {
+  url: string;
+  domain: string;
+  title?: string | null;
+  source_type?: string | null;
+}
+
+export interface ConfidenceBreakdown {
+  source_coverage: number;
+  cost_completeness: number;
+  itinerary_specificity: number;
+}
+
+export interface PlanConfidence {
+  score: number;
+  level: "LOW" | "MEDIUM" | "HIGH";
+  summary: string;
+  breakdown: ConfidenceBreakdown;
+}
+
+export interface FlightOption {
+  route: string;
+  price: string;
+  airline?: string | null;
+  depart_time?: string | null;
+  arrive_time?: string | null;
+  duration?: string | null;
+  booking_url: string;
+  notes?: string | null;
+}
+
+export interface LodgingOption {
+  name: string;
+  location?: string | null;
+  price_per_night: string;
+  rating?: string | null;
+  property_type?: string | null;
+  booking_url: string;
+  notes?: string | null;
+}
+
+export interface PlanMetaPayload {
+  confidence: PlanConfidence | null;
+  sources: SourceAttribution[];
+  flights: FlightOption[];
+  lodgings: LodgingOption[];
+}
+
 export type StreamEvent =
   | { type: "meta"; data: StreamMeta }
   | { type: "delta"; data: string }
   | { type: "token"; data: string }
   | { type: "status"; data: string }
   | { type: "images"; data: DestinationImage[] }
+  | { type: "plan_meta"; data: PlanMetaPayload }
   | { type: "done" };
 
 // ---------------------------------------------------------------------------
@@ -302,6 +351,8 @@ async function streamFetch(
         } else if (eventType === "images") {
           const payload = JSON.parse(data) as { images: DestinationImage[] };
           yield { type: "images", data: payload.images };
+        } else if (eventType === "plan_meta") {
+          yield { type: "plan_meta", data: JSON.parse(data) as PlanMetaPayload };
         } else if (eventType === "status") {
           const payload = JSON.parse(data) as { text: string };
           yield { type: "status", data: payload.text };

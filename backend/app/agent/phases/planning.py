@@ -1,7 +1,6 @@
 """Planning phase handler."""
 
 import logging
-import concurrent.futures
 from datetime import datetime
 from typing import TYPE_CHECKING, Callable, Iterator
 
@@ -9,6 +8,7 @@ from app.agent.formatters import format_constraints, format_plan
 from app.agent.models import ConversationState, Phase, TravelPlan
 from app.agent.prompts import get_phase_prompt
 from app.agent.tools import TOOL_DEFINITIONS, execute_tool
+from app.agent.trust import enrich_plan_with_trust_metadata
 from app.agent.utils import detect_budget_currency, get_current_date_context
 
 if TYPE_CHECKING:
@@ -16,33 +16,35 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Background thread pool for fire-and-forget JSON structuring
-_bg_executor = concurrent.futures.ThreadPoolExecutor(max_workers=2)
 
-
-def _parse_plan_bg(
+def _parse_plan_from_text(
     client: "AIClient",
     system_prompt: str,
     full_response: str,
-    state: ConversationState,
-) -> None:
-    """Background task: parse streamed text into structured TravelPlan."""
-    try:
-        structured_prompt = (
-            f"Provide the structured TravelPlan JSON for this itinerary: {full_response}"
-        )
-        plan = client.chat_structured(
-            [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": structured_prompt},
-            ],
-            TravelPlan,
-            temperature=0.3,
-        )
-        state.current_plan = plan
-        logger.info("Background plan structuring completed successfully")
-    except Exception:
-        logger.exception("Background plan structuring failed")
+    research_context: str,
+) -> TravelPlan:
+    """Parse streamed itinerary text into structured TravelPlan."""
+    structured_prompt = f"""Convert this itinerary into structured TravelPlan JSON.
+
+Itinerary text:
+{full_response}
+
+Research context:
+{research_context}
+
+Critical extraction rules:
+- Populate `flights` with 2-4 bookable options when route data is available.
+- Populate `lodgings` with 3-5 options and direct booking links.
+- Preserve all day-wise activity and budget details."""
+
+    return client.chat_structured(
+        [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": structured_prompt},
+        ],
+        TravelPlan,
+        temperature=0.2,
+    )
 
 
 def _gather_planning_research(
@@ -144,20 +146,23 @@ def generate_plan(
     # Kick off flight search early if we have origin/destination
     # This might have been done in agent.start(), but if not, do it here
     if state.origin and state.destination:
-         # Try to extract year/month from constraints or date_context
-         flight_date_ctx = state.constraints.month_or_season if state.constraints else None
-         # We're inside generate_plan (non-streaming), so we don't have date_context variable available directly unless we call get_current_date_context()
-         if not flight_date_ctx:
-              flight_date_ctx = None
-              
-         # We aren't capturing the result here, just ensuring the future is submitted 
-         # in case it wasn't already. The agent.get_flight_costs() will retrieve it.
-         from app.agent.flight_search import search_flight_costs
-         # Note: Ideally this should be async or managed by the agent class, 
-         # but this is a stateless helper. We'll rely on the agent's pre-computation.
-         fc = search_flight_costs(state.origin, state.destination, flight_date_ctx)
-         if fc:
-             search_results.append(fc)
+        # Try to extract year/month from constraints or date_context
+        flight_date_ctx = (
+            state.constraints.month_or_season if state.constraints else None
+        )
+        # We're inside generate_plan (non-streaming), so we don't have date_context variable available directly unless we call get_current_date_context()
+        if not flight_date_ctx:
+            flight_date_ctx = None
+
+        # We aren't capturing the result here, just ensuring the future is submitted
+        # in case it wasn't already. The agent.get_flight_costs() will retrieve it.
+        from app.agent.flight_search import search_flight_costs
+
+        # Note: Ideally this should be async or managed by the agent class,
+        # but this is a stateless helper. We'll rely on the agent's pre-computation.
+        fc = search_flight_costs(state.origin, state.destination, flight_date_ctx)
+        if fc:
+            search_results.append(fc)
 
     # Kick off hotel search if destination is known (sync fallback)
     if state.destination:
@@ -169,8 +174,9 @@ def generate_plan(
             if state.constraints and state.constraints.interests
             else None
         )
-        
+
         from app.agent.hotel_search import search_hotel_costs
+
         hc = search_hotel_costs(state.destination, date_ctx, budget, preferences)
         if hc:
             search_results.append(hc)
@@ -196,6 +202,11 @@ CURRENCY: ALL prices MUST be in {budget_currency}."""
     ]
 
     plan = client.chat_structured(plan_messages, TravelPlan, temperature=0.7)
+    plan = enrich_plan_with_trust_metadata(
+        plan,
+        search_results,
+        default_destination=state.destination,
+    )
     state.current_plan = plan
     state.phase = Phase.REFINEMENT
 
@@ -231,6 +242,10 @@ def generate_plan_stream(
             language_code=language_code,
         )
         search_results.append(planning_research)
+    if flight_costs and flight_costs not in search_results:
+        search_results.append(flight_costs)
+    if hotel_costs and hotel_costs not in search_results:
+        search_results.append(hotel_costs)
 
     vibe = state.vibe or (state.constraints.vibe if state.constraints else None)
     system_prompt = get_phase_prompt("planning", language_code, vibe=vibe)
@@ -248,7 +263,11 @@ def generate_plan_stream(
     budget_currency = detect_budget_currency(state)
 
     # Combine all prior research into the prompt
-    research_context = "\n\n".join(search_results[-5:]) if search_results else "No prior research available."
+    research_context = (
+        "\n\n".join(search_results[-5:])
+        if search_results
+        else "No prior research available."
+    )
 
     plan_prompt = f"""Create a detailed day-by-day itinerary based on this information:
 
@@ -301,7 +320,10 @@ QUALITY RULES:
 - Every activity must have a cost estimate
 - Be concise but specific — 1-2 lines per activity, not paragraphs
 - Do NOT list generic "Breakfast", "Lunch", "Dinner" unless it's a famous food spot
-- Focus on specific places, things to do, and unique experiences"""
+- Focus on specific places, things to do, and unique experiences
+- Include a "Bookable Flight Options" section with direct booking deeplinks
+- Include a "Bookable Stay Options" section with direct booking deeplinks
+- Include a "Sources Used" section with reliable URLs"""
 
     messages = [
         {"role": "system", "content": system_prompt},
@@ -314,9 +336,22 @@ QUALITY RULES:
         full_response += token
         yield token
 
-    # FIX 2: Fire-and-forget JSON structuring in background thread.
-    # The user sees "done" immediately while we parse JSON behind the scenes.
-    _bg_executor.submit(_parse_plan_bg, client, system_prompt, full_response, state)
+    try:
+        parsed_plan = _parse_plan_from_text(
+            client,
+            system_prompt,
+            full_response,
+            research_context,
+        )
+        parsed_plan = enrich_plan_with_trust_metadata(
+            parsed_plan,
+            search_results,
+            default_destination=state.destination,
+        )
+        state.current_plan = parsed_plan
+    except Exception:
+        logger.exception("Synchronous plan structuring failed after streaming")
+
     state.phase = Phase.REFINEMENT
 
     extra = "\n\n---\nWant me to tweak anything? I can make it safer, faster, more comfortable, or change the base location. Or if you're happy with it, we're done!"

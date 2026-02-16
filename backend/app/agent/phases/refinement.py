@@ -2,49 +2,40 @@
 
 import logging
 import time
-import concurrent.futures
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Iterator
 
 from app.agent.formatters import format_plan
 from app.agent.models import ConversationState, TravelPlan
 from app.agent.prompts import get_phase_prompt
 from app.agent.sanitizer import MAX_REFINEMENT_LENGTH, sanitize_input, wrap_user_content
+from app.agent.trust import enrich_plan_with_trust_metadata
 from app.agent.utils import detect_budget_currency
-
-from typing import TYPE_CHECKING, Iterator
 
 if TYPE_CHECKING:
     from app.agent.ai_client import AIClient
 
 logger = logging.getLogger(__name__)
 
-# Shared background executor for fire-and-forget JSON structuring
-_bg_executor = concurrent.futures.ThreadPoolExecutor(max_workers=2)
 
-
-def _parse_refined_plan_bg(
+def _parse_refined_plan(
     client: "AIClient",
     system_prompt: str,
     full_response: str,
-    state: ConversationState,
-) -> None:
-    """Background task: parse refined text into structured TravelPlan."""
-    try:
-        structured_prompt = (
-            f"Provide the structured TravelPlan JSON for this updated itinerary: {full_response}"
-        )
-        plan = client.chat_structured(
-            [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": structured_prompt},
-            ],
-            TravelPlan,
-            temperature=0.3,
-        )
-        state.current_plan = plan
-        logger.info("Background refinement structuring completed successfully")
-    except Exception:
-        logger.exception("Background refinement structuring failed")
+) -> TravelPlan:
+    """Parse refined text into structured TravelPlan."""
+    structured_prompt = (
+        "Provide the structured TravelPlan JSON for this updated itinerary. "
+        "Preserve or improve flights, lodgings, and budget coherence.\n\n"
+        f"{full_response}"
+    )
+    return client.chat_structured(
+        [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": structured_prompt},
+        ],
+        TravelPlan,
+        temperature=0.2,
+    )
 
 
 def refine_plan_stream(
@@ -60,7 +51,7 @@ def refine_plan_stream(
     if result.injection_detected:
         logger.warning("Possible prompt injection in refinement: %s", result.flags)
 
-    # Wait-guard: if background parse from previous step hasn't finished yet
+    # Wait-guard: ensure plan exists before applying a refinement.
     if not state.current_plan:
         for _ in range(20):  # Wait up to 10s
             if state.current_plan:
@@ -97,8 +88,22 @@ ALL prices MUST be in {budget_currency}."""
         full_response += token
         yield token
 
-    # Fire-and-forget: parse refined plan in background
-    _bg_executor.submit(_parse_refined_plan_bg, client, system_prompt, full_response, state)
+    try:
+        refined_plan = _parse_refined_plan(client, system_prompt, full_response)
+        # Keep earlier sources if the refinement output omitted them.
+        if (
+            state.current_plan
+            and state.current_plan.sources
+            and not refined_plan.sources
+        ):
+            refined_plan.sources = state.current_plan.sources
+        state.current_plan = enrich_plan_with_trust_metadata(
+            refined_plan,
+            [],
+            default_destination=state.destination,
+        )
+    except Exception:
+        logger.exception("Synchronous refinement structuring failed after streaming")
 
     extra = "\n\n---\nAnything else you'd like to change?"
     yield extra
@@ -163,7 +168,11 @@ IMPORTANT:
 
     # Get refined plan
     plan = client.chat_structured(messages, TravelPlan, temperature=0.7)
-    state.current_plan = plan
+    state.current_plan = enrich_plan_with_trust_metadata(
+        plan,
+        [],
+        default_destination=state.destination,
+    )
 
     response = f"Done — adjusted for: {refinement_type}\n\n"
     response += format_plan(plan)

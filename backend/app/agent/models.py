@@ -1,7 +1,7 @@
 """Pydantic models for conversation state and LLM responses."""
 
 from enum import Enum
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -187,6 +187,46 @@ class BudgetBreakdown(BaseModel):
     )
 
 
+class SourceAttribution(BaseModel):
+    """Source used to ground the generated recommendations."""
+
+    url: str = Field(description="Source URL")
+    domain: str = Field(description="Source domain name")
+    title: Optional[str] = Field(
+        default=None, description="Optional source title if available"
+    )
+    source_type: Optional[str] = Field(
+        default=None, description="Category such as flight, hotel, advisory, weather"
+    )
+
+
+class ConfidenceBreakdown(BaseModel):
+    """Subscores that explain overall confidence."""
+
+    source_coverage: int = Field(
+        ge=0, le=100, description="Confidence based on source breadth and quality"
+    )
+    cost_completeness: int = Field(
+        ge=0, le=100, description="Confidence based on cost coverage in the itinerary"
+    )
+    itinerary_specificity: int = Field(
+        ge=0, le=100, description="Confidence based on actionable itinerary detail"
+    )
+
+
+class PlanConfidence(BaseModel):
+    """Confidence metadata for a generated itinerary."""
+
+    score: int = Field(ge=0, le=100, description="Overall confidence score")
+    level: Literal["LOW", "MEDIUM", "HIGH"] = Field(
+        description="Bucketed confidence level"
+    )
+    summary: str = Field(description="Short explanation of confidence score")
+    breakdown: ConfidenceBreakdown = Field(
+        description="Score breakdown by confidence dimension"
+    )
+
+
 class FlightOption(BaseModel):
     """Flight option with booking link."""
 
@@ -215,13 +255,9 @@ class LodgingOption(BaseModel):
     """Hotel/hostel option with booking link."""
 
     name: str = Field(description="Property name")
-    location: Optional[str] = Field(
-        default=None, description="Neighborhood or area"
-    )
+    location: Optional[str] = Field(default=None, description="Neighborhood or area")
     price_per_night: str = Field(description="Nightly price estimate")
-    rating: Optional[str] = Field(
-        default=None, description="Rating score if available"
-    )
+    rating: Optional[str] = Field(default=None, description="Rating score if available")
     property_type: Optional[str] = Field(
         default=None, description="Hotel/hostel/guesthouse etc."
     )
@@ -252,6 +288,14 @@ class TravelPlan(BaseModel):
     )
     budget_breakdown: Optional[BudgetBreakdown] = Field(
         default=None, description="Detailed budget breakdown for the trip"
+    )
+    confidence: Optional[PlanConfidence] = Field(
+        default=None,
+        description="Confidence score and rationale for this itinerary",
+    )
+    sources: list[SourceAttribution] = Field(
+        default_factory=list,
+        description="Supporting sources used to build this itinerary",
     )
     general_tips: list[str] = Field(
         default_factory=list,

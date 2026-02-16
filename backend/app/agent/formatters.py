@@ -1,6 +1,10 @@
 """Formatting utilities for travel agent output."""
 
-from app.agent.models import BudgetBreakdown, ConversationState, RiskAssessment, TravelPlan
+from app.agent.models import (
+    ConversationState,
+    RiskAssessment,
+    TravelPlan,
+)
 
 
 def format_constraints(state: ConversationState) -> str:
@@ -69,7 +73,8 @@ def format_plan(plan: TravelPlan) -> str:
     if plan.acclimatization_notes:
         lines.append(f"• Note: {plan.acclimatization_notes}")
 
-    # Flights and lodgings intentionally omitted for faster responses.
+    if plan.flights or plan.lodgings or plan.sources:
+        lines.append("• Live booking options and sources are shown below.")
 
     lines.append("\n---\n")
 
@@ -77,9 +82,7 @@ def format_plan(plan: TravelPlan) -> str:
         lines.append(f"**Day {day.day}: {day.title}**")
 
         for activity in day.activities:
-            cost_str = (
-                f" — {activity.cost_estimate}" if activity.cost_estimate else ""
-            )
+            cost_str = f" — {activity.cost_estimate}" if activity.cost_estimate else ""
             notes_str = f"  ({activity.cost_notes})" if activity.cost_notes else ""
             lines.append(f"• {activity.activity}{cost_str}{notes_str}")
 
@@ -89,9 +92,7 @@ def format_plan(plan: TravelPlan) -> str:
 
         if day.accommodation:
             acc_cost = (
-                f" — {day.accommodation_cost}/night"
-                if day.accommodation_cost
-                else ""
+                f" — {day.accommodation_cost}/night" if day.accommodation_cost else ""
             )
             lines.append(f"• Stay: {day.accommodation}{acc_cost}")
 

@@ -20,7 +20,7 @@ CRUD
   DELETE /trips/{id}             → Delete trip + versions + session
 """
 
-from typing import Annotated, AsyncGenerator, Callable, Optional
+from typing import Annotated, Any, AsyncGenerator, Callable, Optional
 import json
 import asyncio
 from uuid import UUID
@@ -76,6 +76,20 @@ async def _stream_agent_response(
         await asyncio.sleep(0.02)  # 20ms delay for smooth streaming
 
     yield "event: done\ndata: {}\n\n"
+
+
+def _serialize_plan_meta(agent: Any) -> dict[str, Any] | None:
+    """Build stream payload for trust metadata and bookable recommendations."""
+    plan = agent.state.current_plan
+    if not plan:
+        return None
+
+    return {
+        "confidence": plan.confidence.model_dump() if plan.confidence else None,
+        "sources": [source.model_dump() for source in plan.sources],
+        "flights": [flight.model_dump() for flight in plan.flights],
+        "lodgings": [lodging.model_dump() for lodging in plan.lodgings],
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -539,7 +553,9 @@ async def clarify_trip_token_stream(
 
             task = asyncio.create_task(asyncio.to_thread(run))
 
-            while not task.done() or not status_queue.empty() or not token_queue.empty():
+            while (
+                not task.done() or not status_queue.empty() or not token_queue.empty()
+            ):
                 while not status_queue.empty():
                     status_msg = status_queue.get_nowait()
                     yield f"event: status\ndata: {json.dumps({'text': status_msg})}\n\n"
@@ -562,12 +578,17 @@ async def clarify_trip_token_stream(
                 db, trip_id, "assistant", full_response, phase=agent.state.phase.value
             )
 
+            plan_meta_payload = _serialize_plan_meta(agent)
+            if plan_meta_payload:
+                yield f"event: plan_meta\ndata: {json.dumps(plan_meta_payload)}\n\n"
+
             # Send FINAL meta with updated phase
             final_meta = {
                 "trip_id": str(trip_id),
                 "version_id": str(version.id),
                 "phase": agent.state.phase.value,
-                "has_high_risk": agent.state.phase.value == "feasibility" and agent.state.awaiting_confirmation,
+                "has_high_risk": agent.state.phase.value == "feasibility"
+                and agent.state.awaiting_confirmation,
             }
             yield f"event: meta\ndata: {json.dumps(final_meta)}\n\n"
 
@@ -621,7 +642,9 @@ async def proceed_trip_token_stream(
 
             task = asyncio.create_task(asyncio.to_thread(run))
 
-            while not task.done() or not status_queue.empty() or not token_queue.empty():
+            while (
+                not task.done() or not status_queue.empty() or not token_queue.empty()
+            ):
                 while not status_queue.empty():
                     status_msg = status_queue.get_nowait()
                     yield f"event: status\ndata: {json.dumps({'text': status_msg})}\n\n"
@@ -637,13 +660,19 @@ async def proceed_trip_token_stream(
 
             # Finalize and persist
             await trip_service._persist_state(db, version, agent)
-            user_message = "Let's proceed anyway." if body.proceed else "Let me reconsider."
+            user_message = (
+                "Let's proceed anyway." if body.proceed else "Let me reconsider."
+            )
             await trip_service._store_message(
                 db, trip_id, "user", user_message, phase=agent.state.phase.value
             )
             await trip_service._store_message(
                 db, trip_id, "assistant", full_response, phase=agent.state.phase.value
             )
+
+            plan_meta_payload = _serialize_plan_meta(agent)
+            if plan_meta_payload:
+                yield f"event: plan_meta\ndata: {json.dumps(plan_meta_payload)}\n\n"
 
             # Send FINAL meta with updated phase
             final_meta = {
@@ -713,7 +742,9 @@ async def confirm_assumptions_token_stream(
 
             task = asyncio.create_task(asyncio.to_thread(run))
 
-            while not task.done() or not status_queue.empty() or not token_queue.empty():
+            while (
+                not task.done() or not status_queue.empty() or not token_queue.empty()
+            ):
                 while not status_queue.empty():
                     status_msg = status_queue.get_nowait()
                     yield f"event: status\ndata: {json.dumps({'text': status_msg})}\n\n"
@@ -750,6 +781,10 @@ async def confirm_assumptions_token_stream(
             await trip_service._store_message(
                 db, trip_id, "assistant", full_response, phase=agent.state.phase.value
             )
+
+            plan_meta_payload = _serialize_plan_meta(agent)
+            if plan_meta_payload:
+                yield f"event: plan_meta\ndata: {json.dumps(plan_meta_payload)}\n\n"
 
             # Send FINAL meta with updated phase
             final_meta = {
@@ -810,7 +845,9 @@ async def refine_trip_token_stream(
 
             task = asyncio.create_task(asyncio.to_thread(run))
 
-            while not task.done() or not status_queue.empty() or not token_queue.empty():
+            while (
+                not task.done() or not status_queue.empty() or not token_queue.empty()
+            ):
                 while not status_queue.empty():
                     status_msg = status_queue.get_nowait()
                     yield f"event: status\ndata: {json.dumps({'text': status_msg})}\n\n"
@@ -832,6 +869,10 @@ async def refine_trip_token_stream(
             await trip_service._store_message(
                 db, trip_id, "assistant", full_response, phase=agent.state.phase.value
             )
+
+            plan_meta_payload = _serialize_plan_meta(agent)
+            if plan_meta_payload:
+                yield f"event: plan_meta\ndata: {json.dumps(plan_meta_payload)}\n\n"
 
             # Send FINAL meta with updated phase
             final_meta = {
