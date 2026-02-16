@@ -15,6 +15,7 @@ from app.agent.phases import (
 )
 from app.agent.image_search import search_destination_images
 from app.agent.flight_search import search_flight_costs
+from app.agent.hotel_search import search_hotel_costs
 
 logger = logging.getLogger(__name__)
 
@@ -61,8 +62,12 @@ class TravelAgent:
         self.language_code = language_code  # Store user's preferred language
         self.destination_images: list[dict] = []
         self._image_search_future: Optional[concurrent.futures.Future] = None
+        self.destination_images: list[dict] = []
+        self._image_search_future: Optional[concurrent.futures.Future] = None
         self._flight_search_future: Optional[concurrent.futures.Future] = None
+        self._hotel_search_future: Optional[concurrent.futures.Future] = None
         self._flight_costs: str = ""
+        self._hotel_costs: str = ""
         self._graph = build_agent_graph(
             self.client, self.fast_client, self._handle_tool_call, language_code
         )
@@ -122,9 +127,9 @@ class TravelAgent:
         """Kick off background flight cost search."""
         if self._flight_search_future is not None or not origin or not destination:
             return
-        logger.info(
-            f"[AGENT] Starting background flight search: {origin} -> {destination}"
-        )
+        msg = f"[AGENT] Starting background flight search: {origin} -> {destination}"
+        logger.info(msg)
+        print(f"\n\033[94m{msg}\033[0m")
         self._flight_search_future = _img_executor.submit(
             search_flight_costs, origin, destination, date_context
         )
@@ -141,6 +146,37 @@ class TravelAgent:
             logger.warning(f"[AGENT] Flight search failed/timeout: {e}")
             self._flight_costs = ""
         return self._flight_costs
+
+    def _start_hotel_search(
+        self,
+        destination: str,
+        date_context: str | None = None,
+        budget: str | None = None,
+        preferences: str | None = None,
+    ) -> None:
+        """Kick off background hotel cost search."""
+        if self._hotel_search_future is not None or not destination:
+            return
+        msg = f"[AGENT] Starting background hotel search: {destination}"
+        logger.info(msg)
+        print(f"\n\033[94m{msg}\033[0m")  # Blue color for visibility
+        self._hotel_search_future = _img_executor.submit(
+            search_hotel_costs, destination, date_context, budget, preferences
+        )
+
+    def get_hotel_costs(self) -> str:
+        """Get cached hotel costs, waiting up to 6s if search is still running."""
+        if self._hotel_costs:
+            return self._hotel_costs
+        if self._hotel_search_future is None:
+            return ""
+        try:
+            self._hotel_costs = self._hotel_search_future.result(timeout=6)
+        except Exception as e:
+            logger.warning(f"[AGENT] Hotel search failed/timeout: {e}")
+            self._hotel_costs = ""
+        return self._hotel_costs
+
 
     def _handle_tool_call(self, tool_name: str, arguments: dict) -> None:
         """Handle tool call notifications."""
@@ -186,8 +222,36 @@ class TravelAgent:
         # Kick off flight search if origin and destination are known
         if self.state.origin and self.state.destination:
             # Try to get date context from extraction, or default to generic
-            date_ctx = self._initial_extraction.month_or_season if self._initial_extraction else None
-            self._start_flight_search(self.state.origin, self.state.destination, date_ctx)
+            date_ctx = (
+                self._initial_extraction.month_or_season
+                if self._initial_extraction
+                else None
+            )
+            self._start_flight_search(
+                self.state.origin, self.state.destination, date_ctx
+            )
+            
+        # Kick off hotel search if destination is known
+        if self.state.destination:
+            # Try to get date/budget context from extraction
+            date_ctx = (
+                self._initial_extraction.month_or_season
+                if self._initial_extraction
+                else None
+            )
+            budget = (
+                self._initial_extraction.budget
+                if self._initial_extraction
+                else None
+            )
+            preferences = (
+                " ".join(self._initial_extraction.interests)
+                if self._initial_extraction and self._initial_extraction.interests
+                else None
+            )
+            self._start_hotel_search(
+                self.state.destination, date_ctx, budget, preferences
+            )
         return result["response"]
 
     def process_clarification(self, answers: str) -> tuple[str, bool]:
@@ -297,10 +361,37 @@ class TravelAgent:
                 if self.state.destination:
                     self._start_image_search(self.state.destination)
                 
-                # Also start flight search if we happen to have origin immediately
+            # Also start flight search if we happen to have origin immediately
                 if self.state.origin and self.state.destination:
-                    date_ctx = self._initial_extraction.month_or_season if self._initial_extraction else None
-                    self._start_flight_search(self.state.origin, self.state.destination, date_ctx)
+                    date_ctx = (
+                        self._initial_extraction.month_or_season
+                        if self._initial_extraction
+                        else None
+                    )
+                    self._start_flight_search(
+                        self.state.origin, self.state.destination, date_ctx
+                    )
+                
+                # Also start hotel search if we happen to have destination immediately
+                if self.state.destination:
+                    date_ctx = (
+                        self._initial_extraction.month_or_season
+                        if self._initial_extraction
+                        else None
+                    )
+                    budget = (
+                        self._initial_extraction.budget
+                        if self._initial_extraction
+                        else None
+                    )
+                    preferences = (
+                        " ".join(self._initial_extraction.interests)
+                        if self._initial_extraction and self._initial_extraction.interests
+                        else None
+                    )
+                    self._start_hotel_search(
+                        self.state.destination, date_ctx, budget, preferences
+                    )
                 started = True
 
     def process_clarification_stream(self, answers: str) -> Iterator[str]:
@@ -329,7 +420,32 @@ class TravelAgent:
             elif self._initial_extraction and self._initial_extraction.month_or_season:
                 date_ctx = self._initial_extraction.month_or_season
             
+            
             self._start_flight_search(origin, destination, date_ctx)
+
+        # Trigger hotel search if we have destination (possibly from clarification)
+        if destination:
+             date_ctx = None
+             if self.state.constraints and self.state.constraints.month_or_season:
+                 date_ctx = self.state.constraints.month_or_season
+             elif self._initial_extraction and self._initial_extraction.month_or_season:
+                 date_ctx = self._initial_extraction.month_or_season
+             
+             budget = None
+             if self.state.constraints and self.state.constraints.budget:
+                 budget = self.state.constraints.budget
+             elif self._initial_extraction and self._initial_extraction.budget:
+                 budget = self._initial_extraction.budget
+
+             preferences = []
+             if self.state.constraints and self.state.constraints.interests:
+                 preferences.extend(self.state.constraints.interests)
+             if self.state.constraints and self.state.constraints.vibe:
+                 preferences.append(self.state.constraints.vibe)
+             
+             pref_str = " ".join(preferences) if preferences else None
+             
+             self._start_hotel_search(destination, date_ctx, budget, pref_str)
 
     def confirm_proceed_stream(self, proceed: bool) -> Iterator[str]:
         """Handle proceed decision with token streaming."""
@@ -383,6 +499,7 @@ class TravelAgent:
             on_tool_call=self._handle_tool_call,
             language_code=self.language_code,
             flight_costs=self.get_flight_costs(),
+            hotel_costs=self.get_hotel_costs(),
         )
 
     def refine_plan_stream(self, refinement_type: str) -> Iterator[str]:

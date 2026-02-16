@@ -159,6 +159,22 @@ def generate_plan(
          if fc:
              search_results.append(fc)
 
+    # Kick off hotel search if destination is known (sync fallback)
+    if state.destination:
+        # Extract context if possible
+        date_ctx = state.constraints.month_or_season if state.constraints else None
+        budget = state.constraints.budget if state.constraints else None
+        preferences = (
+            " ".join(state.constraints.interests)
+            if state.constraints and state.constraints.interests
+            else None
+        )
+        
+        from app.agent.hotel_search import search_hotel_costs
+        hc = search_hotel_costs(state.destination, date_ctx, budget, preferences)
+        if hc:
+            search_results.append(hc)
+
     interests_text = ""
     if user_interests:
         interests_text = "\n\nUser's interests:\n" + "\n".join(user_interests)
@@ -198,6 +214,7 @@ def generate_plan_stream(
     on_tool_call: Callable[[str, dict], None] | None = None,
     language_code: str | None = None,
     flight_costs: str = "",
+    hotel_costs: str = "",
 ) -> Iterator[str]:
     """Generate the travel itinerary with token streaming."""
     # FIX 1: Only do expensive research if we have NO prior search results
@@ -241,6 +258,8 @@ Research findings (use these for accurate cost estimates):
 {research_context}
 
 {flight_costs}
+
+{hotel_costs}
 
 CURRENCY: ALL prices MUST be in {budget_currency}.
 

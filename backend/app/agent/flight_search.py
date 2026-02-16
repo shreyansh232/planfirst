@@ -32,7 +32,9 @@ def search_flight_costs(
         current_year = datetime.now().year
         date_str = date_context if date_context else f"{current_year}"
         query = f"round trip flight cost from {origin} to {destination} {date_str} price"
-        logger.info(f"[FLIGHT SEARCH] Searching: {query}")
+        msg = f"[FLIGHT SEARCH] Searching: {query}"
+        logger.info(msg)
+        print(f"\n\033[94m{msg}\033[0m")  # Blue color for visibility
 
         def _run() -> list[dict]:
             with DDGS() as ddgs:
@@ -53,12 +55,18 @@ def search_flight_costs(
             snippets.append(f"- {title}: {body}")
 
         summary = "\n".join(snippets)
-        logger.info(f"[FLIGHT SEARCH] Found {len(results)} results")
+        msg = f"[FLIGHT SEARCH] Found {len(results)} results"
+        logger.info(msg)
+        print(f"\n\033[94m{msg}\033[0m")
         return f"Flight Cost Estimates Research ({origin} -> {destination}):\n{summary}"
 
     except FuturesTimeoutError:
-        logger.warning("[FLIGHT SEARCH] Timeout")
+        msg = "[FLIGHT SEARCH] Timeout"
+        logger.warning(msg)
+        print(f"\n\033[94m{msg}\033[0m")
         return ""
     except Exception as e:
-        logger.error(f"[FLIGHT SEARCH] Error: {e}")
+        msg = f"[FLIGHT SEARCH] Error: {e}"
+        logger.error(msg)
+        print(f"\n\033[94m{msg}\033[0m")
         return ""
