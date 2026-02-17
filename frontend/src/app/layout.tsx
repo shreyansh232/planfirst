@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { SidebarProvider } from "@/components/ui/sidebar";
-import { BackendKeepAlive } from "@/components/BackendKeepAlive";
 import { Analytics } from '@vercel/analytics/next';
 import "./globals.css";
 
@@ -14,7 +13,6 @@ export const metadata: Metadata = {
     type: "website",
     siteName: "Planfirst",
     url: "https://planfirst.vercel.app",
-    // Images are served from opengraph-image.png and twitter-image.png (Next.js file-based metadata)
   },
   twitter: {
     card: "summary_large_image",
@@ -40,7 +38,6 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="antialiased">
-        <BackendKeepAlive />
         <TooltipProvider>
           <SidebarProvider defaultOpen={false}>
             {children}
