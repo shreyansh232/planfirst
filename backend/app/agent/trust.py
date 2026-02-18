@@ -25,6 +25,15 @@ _BAD_URL_TOKENS = (
     "notfound",
     "n/a",
 )
+_TRAIN_NUMBER_PATTERN = re.compile(r"\b\d{5}\b")
+_MULTISPACE_PATTERN = re.compile(r"\s+")
+_PRICE_DIGIT_PATTERN = re.compile(r"^\d[\d,]*(?:\.\d+)?$")
+
+
+def _clean_fragment(value: str | None) -> str:
+    if not value:
+        return ""
+    return _MULTISPACE_PATTERN.sub(" ", value).strip()
 
 
 def _infer_source_type(domain: str) -> str:
@@ -52,7 +61,9 @@ def _is_http_url(url: str) -> bool:
 
 def _flight_search_deeplink(route: str, airline: str | None = None) -> str:
     query = " ".join(
-        part for part in [route.strip(), airline.strip() if airline else "", "flight"] if part
+        part
+        for part in [_clean_fragment(route), _clean_fragment(airline), "flight booking"]
+        if part
     )
     return f"https://www.google.com/travel/flights?q={quote_plus(query)}"
 
@@ -65,9 +76,9 @@ def _stay_search_deeplink(
     query = " ".join(
         part
         for part in [
-            name.strip(),
-            location.strip() if location else "",
-            destination.strip() if destination else "",
+            _clean_fragment(name),
+            _clean_fragment(location),
+            _clean_fragment(destination),
             "hotel booking",
         ]
         if part
@@ -75,8 +86,76 @@ def _stay_search_deeplink(
     return f"https://www.booking.com/searchresults.html?ss={quote_plus(query)}"
 
 
+def _train_search_deeplink(
+    route: str,
+    train_name: str | None = None,
+    origin: str | None = None,
+    destination: str | None = None,
+) -> str:
+    query = " ".join(
+        part
+        for part in [
+            _clean_fragment(origin),
+            _clean_fragment(destination),
+            _clean_fragment(route),
+            _clean_fragment(train_name),
+            "IRCTC train booking",
+        ]
+        if part
+    )
+    return f"https://www.google.com/search?q={quote_plus(query)}"
+
+
+def _normalize_train_name(train_name: str | None) -> str | None:
+    """Drop unreliable train numbers/codes to avoid fake precision in UI."""
+    cleaned = _clean_fragment(train_name)
+    if not cleaned:
+        return None
+
+    cleaned = _TRAIN_NUMBER_PATTERN.sub("", cleaned)
+    cleaned = _clean_fragment(cleaned.strip("-:|"))
+    if not cleaned:
+        return None
+
+    tokens = cleaned.split()
+    if not tokens:
+        return None
+    code_like_tokens = sum(1 for token in tokens if token.isupper() or len(token) <= 3)
+    if len(tokens) >= 3 and (code_like_tokens / len(tokens)) >= 0.8:
+        return None
+    return cleaned
+
+
+def _normalize_train_route(
+    route: str | None,
+    default_origin: str | None,
+    default_destination: str | None,
+) -> str:
+    cleaned = _clean_fragment(route)
+    if not cleaned and default_origin and default_destination:
+        return f"{default_origin} to {default_destination}"
+    if (
+        default_origin
+        and default_destination
+        and (
+            default_origin.lower() not in cleaned.lower()
+            or default_destination.lower() not in cleaned.lower()
+        )
+    ):
+        return f"{default_origin} to {default_destination}"
+    return cleaned
+
+
+def _normalize_price_text(price: str) -> str:
+    cleaned = _clean_fragment(price)
+    if _PRICE_DIGIT_PATTERN.fullmatch(cleaned):
+        return f"₹{cleaned}"
+    return cleaned
+
+
 def _normalize_booking_links(
     plan: TravelPlan,
+    default_origin: str | None = None,
     default_destination: str | None = None,
 ) -> None:
     """Force robust booking deeplinks so users avoid stale 404 pages."""
@@ -99,6 +178,39 @@ def _normalize_booking_links(
             if not stay.notes:
                 stay.notes = f"Original link provided: {original}"
         stay.booking_url = deeplink
+
+    seen_train_keys: set[tuple[str, str, str]] = set()
+    normalized_trains = []
+    for train in plan.trains:
+        train.route = _normalize_train_route(
+            train.route,
+            default_origin=default_origin,
+            default_destination=default_destination,
+        )
+        train.train_name = _normalize_train_name(train.train_name)
+        train.price = _normalize_price_text(train.price)
+        deeplink = _train_search_deeplink(
+            train.route,
+            train.train_name,
+            origin=default_origin,
+            destination=default_destination,
+        )
+        original = _clean_fragment(train.booking_url)
+        if _is_http_url(original) and original != deeplink:
+            if not train.notes:
+                train.notes = f"Original link provided: {original}"
+        train.booking_url = deeplink
+
+        train_key = (
+            train.route.lower(),
+            (train.train_class or "").strip().lower(),
+            train.price.strip().lower(),
+        )
+        if train.route and train.price and train_key not in seen_train_keys:
+            seen_train_keys.add(train_key)
+            normalized_trains.append(train)
+
+    plan.trains = normalized_trains[:4]
 
 
 def extract_sources(
@@ -219,10 +331,15 @@ def build_plan_confidence(plan: TravelPlan, source_count: int) -> PlanConfidence
 def enrich_plan_with_trust_metadata(
     plan: TravelPlan,
     search_results: list[str],
+    default_origin: str | None = None,
     default_destination: str | None = None,
 ) -> TravelPlan:
     """Attach source attributions and confidence metadata to a travel plan."""
-    _normalize_booking_links(plan, default_destination=default_destination)
+    _normalize_booking_links(
+        plan,
+        default_origin=default_origin,
+        default_destination=default_destination,
+    )
 
     if not plan.sources:
         plan.sources = extract_sources(search_results)

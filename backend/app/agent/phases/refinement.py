@@ -100,6 +100,7 @@ ALL prices MUST be in {budget_currency}."""
         state.current_plan = enrich_plan_with_trust_metadata(
             refined_plan,
             [],
+            default_origin=state.origin,
             default_destination=state.destination,
         )
     except Exception:
@@ -171,6 +172,7 @@ IMPORTANT:
     state.current_plan = enrich_plan_with_trust_metadata(
         plan,
         [],
+        default_origin=state.origin,
         default_destination=state.destination,
     )
 

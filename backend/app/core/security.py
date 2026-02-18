@@ -80,6 +80,7 @@ def create_refresh_token_jwt(subject: Union[str, Any]) -> str:
         "exp": expire,
         "sub": str(subject),
         "type": "refresh",  # Distinguish from access tokens
+        "jti": secrets.token_hex(8),  # Unique identifier to prevent collisions
     }
     # Use separate secret key if configured, otherwise fall back to main secret
     secret = (

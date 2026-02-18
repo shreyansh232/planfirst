@@ -90,11 +90,16 @@ interface VibeSelectorProps {
 export function VibeSelector({ selectedVibe, onSelect, disabled }: VibeSelectorProps) {
   return (
     <div className="w-full">
-      <div className="flex items-center justify-center gap-2 mb-3">
-        <Sparkles className="w-4 h-4 text-accent" />
-        <span className="text-sm font-semibold text-foreground/80">
-          Choose a Vibe
-        </span>
+      <div className="flex flex-col items-center justify-center mb-4">
+        <div className="flex items-center gap-2 mb-1">
+          <Sparkles className="w-4 h-4 text-accent" />
+          <span className="text-sm font-semibold text-foreground/80">
+            Choose a Vibe
+          </span>
+        </div>
+        <p className="text-xs text-muted-foreground text-center">
+          Pick the mood for your trip
+        </p>
       </div>
       
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">

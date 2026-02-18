@@ -179,6 +179,18 @@ export interface FlightOption {
   notes?: string | null;
 }
 
+export interface TrainOption {
+  route: string;
+  price: string;
+  train_name?: string | null;
+  train_class?: string | null;
+  depart_time?: string | null;
+  arrive_time?: string | null;
+  duration?: string | null;
+  booking_url: string;
+  notes?: string | null;
+}
+
 export interface LodgingOption {
   name: string;
   location?: string | null;
@@ -193,6 +205,7 @@ export interface PlanMetaPayload {
   confidence: PlanConfidence | null;
   sources: SourceAttribution[];
   flights: FlightOption[];
+  trains: TrainOption[];
   lodgings: LodgingOption[];
 }
 

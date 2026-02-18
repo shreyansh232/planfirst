@@ -88,6 +88,7 @@ def _serialize_plan_meta(agent: Any) -> dict[str, Any] | None:
         "confidence": plan.confidence.model_dump() if plan.confidence else None,
         "sources": [source.model_dump() for source in plan.sources],
         "flights": [flight.model_dump() for flight in plan.flights],
+        "trains": [train.model_dump() for train in plan.trains],
         "lodgings": [lodging.model_dump() for lodging in plan.lodgings],
     }
 

@@ -13,7 +13,7 @@ from app.agent.models import (
 from app.agent.prompts import get_phase_prompt
 from app.agent.sanitizer import sanitize_input, wrap_user_content
 
-from typing import TYPE_CHECKING, Iterator, Callable
+from typing import Iterator, Callable
 
 if TYPE_CHECKING:
     from app.agent.ai_client import AIClient
@@ -122,15 +122,18 @@ def handle_start(
             missing.append("where you want to go")
 
         base_response = f"Hey! I'd love to help plan your trip. Just need to know {' and '.join(missing)} to get started."
-        
+
         if language_code and language_code != "en":
-             trans_messages = [
-                 {"role": "system", "content": f"Translate the following to {language_code}. Keep it friendly and casual."},
-                 {"role": "user", "content": base_response}
-             ]
-             response = client.chat(trans_messages, temperature=0.3)
+            trans_messages = [
+                {
+                    "role": "system",
+                    "content": f"Translate the following to {language_code}. Keep it friendly and casual.",
+                },
+                {"role": "user", "content": base_response},
+            ]
+            response = client.chat(trans_messages, temperature=0.3)
         else:
-             response = base_response
+            response = base_response
 
         state.add_message("user", user_prompt)
         state.add_message("assistant", response)
@@ -149,7 +152,7 @@ def handle_start(
     if extracted.solo_or_group:
         known_parts.append(f"Travel type: {extracted.solo_or_group}")
     if extracted.language_code:
-         known_parts.append(f"Language: {extracted.language_code}")
+        known_parts.append(f"Language: {extracted.language_code}")
     if extracted.budget:
         known_parts.append(f"Budget: {extracted.budget}")
     if extracted.interests:
@@ -226,6 +229,7 @@ def process_clarification_stream(
     initial_extraction: InitialExtraction | None,
     language_code: str | None = None,
     search_results: list[str] | None = None,
+    on_constraints_extracted: Callable[[TravelConstraints], None] | None = None,
 ) -> Iterator[str]:
     """Process clarification answers with token streaming, then run feasibility."""
     from app.agent.phases import feasibility
@@ -233,6 +237,11 @@ def process_clarification_stream(
     # 1. Extract constraints (Fast, non-streaming)
     constraints = process_clarification(client, state, answers, initial_extraction)
     state.constraints = constraints
+    if on_constraints_extracted:
+        try:
+            on_constraints_extracted(constraints)
+        except Exception:
+            logger.exception("Constraints callback failed during clarification stream")
     state.phase = Phase.FEASIBILITY
 
     # 2. Yield feasibility assessment tokens
@@ -252,7 +261,7 @@ def process_clarification(
     initial_extraction: InitialExtraction | None,
 ) -> TravelConstraints:
     """Process user's answers to clarification questions.
-    
+
     logger.info(f"Processing clarification. State vibe: {state.vibe}")
 
     Merges answers with any info already extracted from the initial prompt.

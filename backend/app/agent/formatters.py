@@ -5,6 +5,7 @@ from app.agent.models import (
     RiskAssessment,
     TravelPlan,
 )
+from app.agent.train_search import get_train_assumption_note
 
 
 def format_constraints(state: ConversationState) -> str:
@@ -31,6 +32,12 @@ def format_constraints(state: ConversationState) -> str:
         lines.append(f"Budget: {c.budget}")
     if c.interests:
         lines.append(f"Interests: {', '.join(c.interests)}")
+
+    # Add transport mode assumption for Indian domestic travel
+    train_note = get_train_assumption_note(c.origin, c.destination, c.budget)
+    if train_note:
+        lines.append(f"\nTransport Note: {train_note}")
+
     return "\n".join(lines)
 
 

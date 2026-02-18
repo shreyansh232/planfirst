@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import useSWR from "swr";
-import { ArrowUp, Sparkles, Loader2, Plane, AlertTriangle } from "lucide-react";
+import { ArrowUp, Sparkles, Plane, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -58,6 +58,85 @@ type NextAction =
   | "modify_input"
   | "done";
 
+const DUPLICATE_LINK_SECTION_HEADERS = [
+  "bookable flight options",
+  "bookable train options",
+  "bookable stay options",
+  "sources used",
+];
+
+const PLAN_TWEAK_CTA =
+  "Want me to tweak anything? I can make it safer, faster, more comfortable, or change the base location. Or if you're happy with it, we're done!";
+const STREAM_FLUSH_INTERVAL_MS = 36;
+const STREAM_CHUNK_SIZE = 6;
+
+function stripDuplicateLinkSections(content: string): string {
+  const lines = content.split("\n");
+  const output: string[] = [];
+  let skipping = false;
+
+  for (const line of lines) {
+    const normalized = line
+      .trim()
+      .replace(/[*_`]/g, "")
+      .replace(/^#{1,6}\s*/, "")
+      .replace(/:$/, "")
+      .toLowerCase();
+
+    const isDuplicateHeader = DUPLICATE_LINK_SECTION_HEADERS.some(
+      (header) => normalized === header,
+    );
+    if (isDuplicateHeader) {
+      skipping = true;
+      continue;
+    }
+
+    if (skipping) {
+      const trimmed = line.trim();
+      const isBullet =
+        /^[-*•]\s+/.test(trimmed) ||
+        /^\d+\.\s+/.test(trimmed) ||
+        /^https?:\/\//.test(trimmed);
+      const isBlank = trimmed.length === 0;
+      if (isBullet || isBlank) {
+        continue;
+      }
+      skipping = false;
+    }
+
+    output.push(line);
+  }
+
+  return output.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+function stripTrailingPlanCta(content: string): {
+  content: string;
+  hadCta: boolean;
+} {
+  const ctaPatterns = [
+    /want me to tweak anything\?[\s\S]*?we'?re done!?/i,
+    /anything else you'd like to change\??/i,
+  ];
+
+  let cleaned = content;
+  let hadCta = false;
+
+  for (const pattern of ctaPatterns) {
+    if (pattern.test(cleaned)) {
+      hadCta = true;
+      cleaned = cleaned.replace(pattern, "").trim();
+    }
+  }
+
+  cleaned = cleaned
+    .replace(/\n?\s*---\s*$/g, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+  return { content: cleaned, hadCta };
+}
+
 function toPlanMetaPayload(
   planJson: Record<string, unknown> | null | undefined,
 ): PlanMetaPayload | undefined {
@@ -66,6 +145,7 @@ function toPlanMetaPayload(
   const confidenceRaw = planJson.confidence;
   const sourcesRaw = planJson.sources;
   const flightsRaw = planJson.flights;
+  const trainsRaw = planJson.trains;
   const lodgingsRaw = planJson.lodgings;
 
   const confidence =
@@ -80,6 +160,9 @@ function toPlanMetaPayload(
       : [],
     flights: Array.isArray(flightsRaw)
       ? (flightsRaw as PlanMetaPayload["flights"])
+      : [],
+    trains: Array.isArray(trainsRaw)
+      ? (trainsRaw as PlanMetaPayload["trains"])
       : [],
     lodgings: Array.isArray(lodgingsRaw)
       ? (lodgingsRaw as PlanMetaPayload["lodgings"])
@@ -107,8 +190,10 @@ export function ChatInterface({
   const [nextAction, setNextAction] = useState<NextAction>("text_input");
   const [hasHighRisk, setHasHighRisk] = useState(false);
   const [restored, setRestored] = useState(false);
-  const [streamingHasDelta, setStreamingHasDelta] = useState(false);
+  const [hasStreamingContent, setHasStreamingContent] = useState(false);
   const [selectedVibe, setSelectedVibe] = useState<string | null>(initialVibe);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const shouldAutoScrollRef = useRef(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const startedRef = useRef(false);
@@ -122,13 +207,28 @@ export function ChatInterface({
     return `planfirst_chat_prompt_${initialPrompt || "new"}`;
   }, [initialPrompt, initialTripId, tripId]);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
+  const scrollToBottom = useCallback(
+    (behavior: ScrollBehavior = "smooth") => {
+      if (!shouldAutoScrollRef.current) return;
+      messagesEndRef.current?.scrollIntoView({ behavior });
+    },
+    [],
+  );
+
+  const handleMessagesScroll = useCallback(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    const distanceFromBottom =
+      container.scrollHeight - container.scrollTop - container.clientHeight;
+    shouldAutoScrollRef.current = distanceFromBottom < 120;
+  }, []);
 
   useEffect(() => {
-    scrollToBottom();
-  }, [messages, isLoading]);
+    const raf = requestAnimationFrame(() =>
+      scrollToBottom(isLoading ? "auto" : "smooth"),
+    );
+    return () => cancelAnimationFrame(raf);
+  }, [messages, isLoading, scrollToBottom]);
 
   useEffect(() => {
     if (!isLoading && nextAction === "text_input") {
@@ -196,8 +296,11 @@ export function ChatInterface({
       let meta: StreamMeta | null = null;
       let hasContent = false;
       let created = false;
+      let pendingText = "";
+      let pendingPlanMeta: PlanMetaPayload | null = null;
+      let flushTimer: number | null = null;
       initialMessageIdRef.current = null;
-      setStreamingHasDelta(false);
+      setHasStreamingContent(false);
 
       const ensureMessage = () => {
         if (created) return;
@@ -210,80 +313,118 @@ export function ChatInterface({
         created = true;
       };
 
-      for await (const event of stream) {
-        if (event.type === "meta") {
-          meta = event.data;
-          if (event.data.trip_id) setTripId(event.data.trip_id);
-          setHasHighRisk(event.data.has_high_risk);
-        }
-        if (event.type === "status") {
-          setLoadingText(event.data);
-        }
-        // Handle delta events (chunked streaming)
-        if (event.type === "delta") {
-          const cleaned = event.data.replace(/\n{3,}/g, "\n\n");
-          if (!created) {
-            ensureMessage();
+      const appendTextChunk = (chunk: string) => {
+        if (!chunk) return;
+        ensureMessage();
+        setHasStreamingContent(true);
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === (initialMessageIdRef.current || id)
+              ? {
+                  ...msg,
+                  content: hasContent ? msg.content + chunk : chunk,
+                }
+              : msg,
+          ),
+        );
+        hasContent = true;
+      };
+
+      const flushPendingChunk = (flushAll = false) => {
+        if (!pendingText) return;
+        const chunk = flushAll
+          ? pendingText
+          : pendingText.slice(0, STREAM_CHUNK_SIZE);
+        pendingText = flushAll
+          ? ""
+          : pendingText.slice(STREAM_CHUNK_SIZE);
+        appendTextChunk(chunk);
+      };
+
+      const ensureFlushTimer = () => {
+        if (flushTimer !== null) return;
+        flushTimer = window.setInterval(() => {
+          flushPendingChunk(false);
+          if (!pendingText && flushTimer !== null) {
+            window.clearInterval(flushTimer);
+            flushTimer = null;
           }
-          setMessages((prev) =>
-            prev.map((msg) =>
-              msg.id === (initialMessageIdRef.current || id)
-                ? {
-                    ...msg,
-                    content: hasContent ? msg.content + cleaned : cleaned,
-                  }
-                : msg,
-            ),
-          );
-          hasContent = true;
-          setStreamingHasDelta(true);
-        }
-        // Handle token events (character-by-character streaming)
-        if (event.type === "token") {
-          if (!created) {
-            ensureMessage();
-          }
-          setMessages((prev) =>
-            prev.map((msg) =>
-              msg.id === (initialMessageIdRef.current || id)
-                ? { ...msg, content: msg.content + event.data }
-                : msg,
-            ),
-          );
-          hasContent = true;
-          setStreamingHasDelta(true);
-        }
-        // Handle images event
-        if (event.type === "images") {
-          if (!created) {
-            ensureMessage();
-          }
-          setMessages((prev) =>
-            prev.map((msg) =>
-              msg.id === (initialMessageIdRef.current || id)
-                ? { ...msg, images: event.data }
-                : msg,
-            ),
+        }, STREAM_FLUSH_INTERVAL_MS);
+      };
+
+      const drainPending = async () => {
+        while (pendingText.length > 0) {
+          flushPendingChunk(false);
+          await new Promise((resolve) =>
+            window.setTimeout(resolve, STREAM_FLUSH_INTERVAL_MS),
           );
         }
-        if (event.type === "plan_meta") {
-          if (!created) {
-            ensureMessage();
-          }
-          setMessages((prev) =>
-            prev.map((msg) =>
-              msg.id === (initialMessageIdRef.current || id)
-                ? { ...msg, planMeta: event.data }
-                : msg,
-            ),
-          );
+        if (flushTimer !== null) {
+          window.clearInterval(flushTimer);
+          flushTimer = null;
         }
+      };
+
+      try {
+        for await (const event of stream) {
+          if (event.type === "meta") {
+            meta = event.data;
+            if (event.data.trip_id) setTripId(event.data.trip_id);
+            setHasHighRisk(event.data.has_high_risk);
+          }
+          if (event.type === "status") {
+            setLoadingText(event.data);
+          }
+          // Handle delta events (chunked streaming)
+          if (event.type === "delta") {
+            const cleaned = event.data.replace(/\n{3,}/g, "\n\n");
+            pendingText += cleaned;
+            ensureFlushTimer();
+          }
+          // Handle token events (character-by-character streaming)
+          if (event.type === "token") {
+            pendingText += event.data;
+            ensureFlushTimer();
+          }
+          // Handle images event
+          if (event.type === "images") {
+            if (!created) {
+              ensureMessage();
+            }
+            setMessages((prev) =>
+              prev.map((msg) =>
+                msg.id === (initialMessageIdRef.current || id)
+                  ? { ...msg, images: event.data }
+                  : msg,
+              ),
+            );
+          }
+          if (event.type === "plan_meta") {
+            pendingPlanMeta = event.data;
+          }
+        }
+      } finally {
+        if (flushTimer !== null) {
+          window.clearInterval(flushTimer);
+          flushTimer = null;
+        }
+      }
+      await drainPending();
+      if (pendingPlanMeta) {
+        ensureMessage();
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === (initialMessageIdRef.current || id)
+              ? { ...msg, planMeta: pendingPlanMeta }
+              : msg,
+          ),
+        );
       }
 
       if (nextActionFromMeta) {
         setNextAction(nextActionFromMeta(meta));
       }
-      setStreamingHasDelta(false);
+      setHasStreamingContent(false);
     },
     [],
   );
@@ -313,6 +454,7 @@ export function ChatInterface({
       if (!force && startedRef.current) return;
       startInFlightRef.current = true;
       startedRef.current = true;
+      shouldAutoScrollRef.current = true;
       setIsLoading(true);
       setLoadingText("Starting your trip plan...");
 
@@ -337,13 +479,20 @@ export function ChatInterface({
         setIsLoading(false);
         startInFlightRef.current = false;
       }
-  }, [initialPrompt, consumeStream, handleError, addMessage, selectedVibe]);
+  }, [
+    initialPrompt,
+    consumeStream,
+    handleError,
+    addMessage,
+    selectedVibe,
+  ]);
 
   const doClarify = useCallback(
     async (answers: string) => {
       if (!tripId) return;
       if (actionInFlightRef.current) return;
       actionInFlightRef.current = true;
+      shouldAutoScrollRef.current = true;
       setIsLoading(true);
       setLoadingText("Analyzing feasibility...");
 
@@ -375,10 +524,12 @@ export function ChatInterface({
       }
       if (actionInFlightRef.current) return;
       actionInFlightRef.current = true;
+      const startingStatus = proceed
+        ? "Generating assumptions..."
+        : "Processing...";
+      shouldAutoScrollRef.current = true;
       setIsLoading(true);
-      setLoadingText(
-        proceed ? "Generating assumptions..." : "Processing...",
-      );
+      setLoadingText(startingStatus);
 
       try {
         const stream = await proceedTripTokenStream(tripId, proceed);
@@ -396,7 +547,12 @@ export function ChatInterface({
         actionInFlightRef.current = false;
       }
     },
-    [tripId, nextAction, consumeStream, handleError],
+    [
+      tripId,
+      nextAction,
+      consumeStream,
+      handleError,
+    ],
   );
 
   const doConfirmAssumptions = useCallback(
@@ -404,6 +560,7 @@ export function ChatInterface({
       if (!tripId) return;
       if (actionInFlightRef.current) return;
       actionInFlightRef.current = true;
+      shouldAutoScrollRef.current = true;
       setIsLoading(true);
       setLoadingText(
         "Researching prices and building your itinerary...",
@@ -432,6 +589,7 @@ export function ChatInterface({
       if (!tripId) return;
       if (actionInFlightRef.current) return;
       actionInFlightRef.current = true;
+      shouldAutoScrollRef.current = true;
       setIsLoading(true);
       setLoadingText("Refining your plan...");
 
@@ -592,6 +750,7 @@ export function ChatInterface({
     e.preventDefault();
     const text = input.trim();
     if (!text || isLoading) return;
+    shouldAutoScrollRef.current = true;
 
     addMessage("user", text);
     setInput("");
@@ -666,7 +825,11 @@ export function ChatInterface({
   return (
     <div className="flex flex-col h-full overflow-hidden bg-[#FAFAF8]">
       {/* Messages Area */}
-      <div className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-6 py-8 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+      <div
+        ref={scrollContainerRef}
+        onScroll={handleMessagesScroll}
+        className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-6 py-8 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
+      >
         <div className="max-w-3xl mx-auto space-y-6">
           {displayMessages.length === 0 && !isLoading && (
             <div className="flex flex-col items-center justify-center py-20 text-center">
@@ -690,13 +853,28 @@ export function ChatInterface({
           )}
 
           {displayMessages.map((message, index) => (
-            <div
-              key={`${message.id}-${index}`}
-              className={`flex w-full min-w-0 ${
-                message.role === "user" ? "justify-end" : "justify-start"
-              }`}
-            >
-              {message.role === "assistant" && !message.content ? null : (
+            (() => {
+              const normalizedContent =
+                message.role === "assistant"
+                  ? stripDuplicateLinkSections(message.content)
+                  : message.content;
+              const { content: renderedContent, hadCta } =
+                message.role === "assistant"
+                  ? stripTrailingPlanCta(normalizedContent)
+                  : { content: normalizedContent, hadCta: false };
+              const isEmptyAssistantMessage =
+                message.role === "assistant" &&
+                !renderedContent &&
+                !message.planMeta &&
+                !(message.images && message.images.length > 0);
+              return (
+                <div
+                  key={`${message.id}-${index}`}
+                  className={`flex w-full min-w-0 ${
+                    message.role === "user" ? "justify-end" : "justify-start"
+                  }`}
+                >
+                  {isEmptyAssistantMessage ? null : (
                 <div
                   className={`flex min-w-0 items-start gap-2 sm:gap-3 w-full ${
                     message.role === "user"
@@ -753,13 +931,20 @@ export function ChatInterface({
                       {message.images && message.images.length > 0 && (
                         <ImageCarousel images={message.images} />
                       )}
-                      <MarkdownRenderer content={message.content} />
+                      {renderedContent ? <MarkdownRenderer content={renderedContent} /> : null}
                     </div>
                     {message.planMeta && <PlanInsightsPanel meta={message.planMeta} />}
+                    {hadCta && message.planMeta ? (
+                      <p className="mt-4 text-sm text-muted-foreground">
+                        {PLAN_TWEAK_CTA}
+                      </p>
+                    ) : null}
                   </div>
                 </div>
-              )}
-            </div>
+                  )}
+                </div>
+              );
+            })()
           ))}
 
           {/* Action Cards */}
@@ -789,15 +974,36 @@ export function ChatInterface({
             </div>
           )}
 
-          {/* Loading Indicator */}
-          {isLoading && !streamingHasDelta && (
-            <div className="flex justify-start pl-0 sm:pl-11">
-              <div className="flex items-center gap-3 bg-white rounded-2xl border border-border/30 shadow-sm px-5 py-4">
-                <div className="w-8 h-8 rounded-full bg-accent/10 flex items-center justify-center">
-                  <Loader2 className="w-4 h-4 text-accent animate-spin" />
-                </div>
-                <p className="text-sm text-muted-foreground">{loadingText}</p>
-              </div>
+          {isLoading && !hasStreamingContent && (
+            <div className="flex min-w-0 items-start gap-2 sm:gap-3 w-full">
+              <div className="mt-0.5 shrink-0 w-8 h-8" aria-hidden="true" />
+              <p className="text-sm font-medium leading-6">
+                <span className="status-shimmer-text">{loadingText}</span>
+              </p>
+              <style jsx>{`
+                .status-shimmer-text {
+                  color: transparent;
+                  background-image: linear-gradient(
+                    90deg,
+                    #8a8a8a 0%,
+                    #1a1a1a 35%,
+                    #8a8a8a 70%
+                  );
+                  background-size: 220% 100%;
+                  -webkit-background-clip: text;
+                  background-clip: text;
+                  animation: statusShimmer 1.6s linear infinite;
+                }
+
+                @keyframes statusShimmer {
+                  0% {
+                    background-position: 180% 0;
+                  }
+                  100% {
+                    background-position: -40% 0;
+                  }
+                }
+              `}</style>
             </div>
           )}
 
@@ -812,7 +1018,9 @@ export function ChatInterface({
             <div className="relative">
               <div className="relative flex items-center">
                 <div className="w-full h-14 pl-6 pr-14 rounded-full bg-muted/50 flex items-center">
-                  <span className="text-muted-foreground text-sm">Waiting for response...</span>
+                  <span className="text-muted-foreground text-sm">
+                    {hasStreamingContent ? "Generating..." : loadingText}
+                  </span>
                 </div>
                 <div className="absolute right-2 w-10 h-10 rounded-full bg-muted flex items-center justify-center">
                   <ArrowUp className="w-5 h-5 text-muted-foreground" />

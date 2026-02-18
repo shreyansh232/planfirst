@@ -9,13 +9,13 @@ from app.agent.graph import build_agent_graph
 from app.agent.models import ConversationState, Phase
 from app.agent.phases import (
     clarification,
-    feasibility,
     planning,
     refinement,
 )
 from app.agent.image_search import search_destination_images
 from app.agent.flight_search import search_flight_costs
 from app.agent.hotel_search import search_hotel_costs
+from app.agent.train_search import search_train_costs, should_search_trains
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +31,7 @@ class TravelAgent:
         api_key: Optional[str] = None,
         model: str = DEFAULT_MODEL,
         fast_model: Optional[str] = FAST_MODEL,
-            on_search: Optional[Callable[[str], None]] = None,
+        on_search: Optional[Callable[[str], None]] = None,
         on_status: Optional[Callable[[str], None]] = None,
         language_code: Optional[str] = None,
         vibe: Optional[str] = None,
@@ -66,8 +66,10 @@ class TravelAgent:
         self._image_search_future: Optional[concurrent.futures.Future] = None
         self._flight_search_future: Optional[concurrent.futures.Future] = None
         self._hotel_search_future: Optional[concurrent.futures.Future] = None
+        self._train_search_future: Optional[concurrent.futures.Future] = None
         self._flight_costs: str = ""
         self._hotel_costs: str = ""
+        self._train_costs: dict = {}
         self._graph = build_agent_graph(
             self.client, self.fast_client, self._handle_tool_call, language_code
         )
@@ -177,6 +179,54 @@ class TravelAgent:
             self._hotel_costs = ""
         return self._hotel_costs
 
+    def _start_train_search(
+        self,
+        origin: str,
+        destination: str,
+        date_context: str | None = None,
+        budget: str | None = None,
+    ) -> None:
+        """Kick off background train cost search for Indian routes."""
+        if self._train_search_future is not None or not origin or not destination:
+            return
+        # Only search trains for Indian domestic routes
+        if not should_search_trains(origin, destination):
+            logger.info("[AGENT] Skipping train search - not an Indian domestic route")
+            return
+        msg = f"[AGENT] Starting background train search: {origin} -> {destination}"
+        logger.info(msg)
+        print(f"\n\033[94m{msg}\033[0m")  # Blue color for visibility
+        self._train_search_future = _img_executor.submit(
+            search_train_costs, origin, destination, date_context, budget
+        )
+
+    def get_train_costs(self) -> dict:
+        """Get cached train costs, waiting up to 6s if search is still running."""
+        if self._train_costs:
+            return self._train_costs
+        if self._train_search_future is None:
+            return {}
+        try:
+            self._train_costs = self._train_search_future.result(timeout=6)
+        except Exception as e:
+            logger.warning(f"[AGENT] Train search failed/timeout: {e}")
+            self._train_costs = {}
+        return self._train_costs
+
+    def _warm_price_searches(
+        self,
+        origin: str | None,
+        destination: str | None,
+        date_ctx: str | None = None,
+        budget: str | None = None,
+        preferences: str | None = None,
+    ) -> None:
+        """Start transport/stay searches as soon as required constraints are known."""
+        if origin and destination:
+            self._start_flight_search(origin, destination, date_ctx)
+            self._start_train_search(origin, destination, date_ctx, budget)
+        if destination:
+            self._start_hotel_search(destination, date_ctx, budget, preferences)
 
     def _handle_tool_call(self, tool_name: str, arguments: dict) -> None:
         """Handle tool call notifications."""
@@ -230,7 +280,14 @@ class TravelAgent:
             self._start_flight_search(
                 self.state.origin, self.state.destination, date_ctx
             )
-            
+            # Also start train search for Indian routes
+            budget = (
+                self._initial_extraction.budget if self._initial_extraction else None
+            )
+            self._start_train_search(
+                self.state.origin, self.state.destination, date_ctx, budget
+            )
+
         # Kick off hotel search if destination is known
         if self.state.destination:
             # Try to get date/budget context from extraction
@@ -240,9 +297,7 @@ class TravelAgent:
                 else None
             )
             budget = (
-                self._initial_extraction.budget
-                if self._initial_extraction
-                else None
+                self._initial_extraction.budget if self._initial_extraction else None
             )
             preferences = (
                 " ".join(self._initial_extraction.interests)
@@ -313,6 +368,10 @@ class TravelAgent:
             Generated plan or request for clarification.
         """
         self._emit_status("Researching current prices...")
+        train_costs = self.get_train_costs()
+        if train_costs and train_costs.get("summary"):
+            if train_costs["summary"] not in self.search_results:
+                self.search_results.append(train_costs["summary"])
         result = self._run_graph(
             "assumptions",
             {
@@ -360,8 +419,8 @@ class TravelAgent:
             if not started:
                 if self.state.destination:
                     self._start_image_search(self.state.destination)
-                
-            # Also start flight search if we happen to have origin immediately
+
+                # Also start flight search if we happen to have origin immediately
                 if self.state.origin and self.state.destination:
                     date_ctx = (
                         self._initial_extraction.month_or_season
@@ -371,7 +430,16 @@ class TravelAgent:
                     self._start_flight_search(
                         self.state.origin, self.state.destination, date_ctx
                     )
-                
+                    # Also start train search for Indian routes
+                    budget = (
+                        self._initial_extraction.budget
+                        if self._initial_extraction
+                        else None
+                    )
+                    self._start_train_search(
+                        self.state.origin, self.state.destination, date_ctx, budget
+                    )
+
                 # Also start hotel search if we happen to have destination immediately
                 if self.state.destination:
                     date_ctx = (
@@ -386,7 +454,8 @@ class TravelAgent:
                     )
                     preferences = (
                         " ".join(self._initial_extraction.interests)
-                        if self._initial_extraction and self._initial_extraction.interests
+                        if self._initial_extraction
+                        and self._initial_extraction.interests
                         else None
                     )
                     self._start_hotel_search(
@@ -397,6 +466,26 @@ class TravelAgent:
     def process_clarification_stream(self, answers: str) -> Iterator[str]:
         """Process clarification answers with token streaming."""
         self._emit_status("Analyzing your answers...")
+
+        def _start_searches_on_constraints(constraints) -> None:
+            date_ctx = constraints.month_or_season
+            budget = constraints.budget or (
+                self._initial_extraction.budget if self._initial_extraction else None
+            )
+            preferences: list[str] = []
+            if constraints.interests:
+                preferences.extend(constraints.interests)
+            if constraints.vibe:
+                preferences.append(constraints.vibe)
+            pref_str = " ".join(preferences) if preferences else None
+            self._warm_price_searches(
+                constraints.origin,
+                constraints.destination,
+                date_ctx=date_ctx,
+                budget=budget,
+                preferences=pref_str,
+            )
+
         stream = clarification.process_clarification_stream(
             self.client,
             self.state,
@@ -404,14 +493,19 @@ class TravelAgent:
             self._initial_extraction,
             self.language_code,
             search_results=self.search_results,
+            on_constraints_extracted=_start_searches_on_constraints,
         )
         for token in stream:
             yield token
-        
+
         # After clarification, check for origin/dest in constraints or extraction
-        origin = self.state.origin or (self.state.constraints and self.state.constraints.origin)
-        destination = self.state.destination or (self.state.constraints and self.state.constraints.destination)
-        
+        origin = self.state.origin or (
+            self.state.constraints and self.state.constraints.origin
+        )
+        destination = self.state.destination or (
+            self.state.constraints and self.state.constraints.destination
+        )
+
         if origin and destination:
             # Get date context
             date_ctx = None
@@ -419,33 +513,45 @@ class TravelAgent:
                 date_ctx = self.state.constraints.month_or_season
             elif self._initial_extraction and self._initial_extraction.month_or_season:
                 date_ctx = self._initial_extraction.month_or_season
-            
-            
+
+            # Also start train search for Indian routes
+            budget = None
+            if self.state.constraints and self.state.constraints.budget:
+                budget = self.state.constraints.budget
+            elif self._initial_extraction and self._initial_extraction.budget:
+                budget = self._initial_extraction.budget
             self._start_flight_search(origin, destination, date_ctx)
+            self._start_train_search(origin, destination, date_ctx, budget)
 
         # Trigger hotel search if we have destination (possibly from clarification)
         if destination:
-             date_ctx = None
-             if self.state.constraints and self.state.constraints.month_or_season:
-                 date_ctx = self.state.constraints.month_or_season
-             elif self._initial_extraction and self._initial_extraction.month_or_season:
-                 date_ctx = self._initial_extraction.month_or_season
-             
-             budget = None
-             if self.state.constraints and self.state.constraints.budget:
-                 budget = self.state.constraints.budget
-             elif self._initial_extraction and self._initial_extraction.budget:
-                 budget = self._initial_extraction.budget
+            date_ctx = None
+            if self.state.constraints and self.state.constraints.month_or_season:
+                date_ctx = self.state.constraints.month_or_season
+            elif self._initial_extraction and self._initial_extraction.month_or_season:
+                date_ctx = self._initial_extraction.month_or_season
 
-             preferences = []
-             if self.state.constraints and self.state.constraints.interests:
-                 preferences.extend(self.state.constraints.interests)
-             if self.state.constraints and self.state.constraints.vibe:
-                 preferences.append(self.state.constraints.vibe)
-             
-             pref_str = " ".join(preferences) if preferences else None
-             
-             self._start_hotel_search(destination, date_ctx, budget, pref_str)
+            budget = None
+            if self.state.constraints and self.state.constraints.budget:
+                budget = self.state.constraints.budget
+            elif self._initial_extraction and self._initial_extraction.budget:
+                budget = self._initial_extraction.budget
+
+            preferences = []
+            if self.state.constraints and self.state.constraints.interests:
+                preferences.extend(self.state.constraints.interests)
+            if self.state.constraints and self.state.constraints.vibe:
+                preferences.append(self.state.constraints.vibe)
+
+            pref_str = " ".join(preferences) if preferences else None
+
+            self._warm_price_searches(
+                origin,
+                destination,
+                date_ctx=date_ctx,
+                budget=budget,
+                preferences=pref_str,
+            )
 
     def confirm_proceed_stream(self, proceed: bool) -> Iterator[str]:
         """Handle proceed decision with token streaming."""
@@ -470,7 +576,6 @@ class TravelAgent:
     ) -> Iterator[str]:
         """Handle assumptions confirmation with token streaming."""
         import time
-        from app.agent.phases import assumptions
 
         if not confirmed and not modifications:
             yield "Please let me know what changes you'd like to make."
@@ -491,6 +596,13 @@ class TravelAgent:
 
         self._emit_status("Creating your itinerary...")
         self.state.phase = Phase.PLANNING
+
+        # Get train costs and add to search results if available
+        train_costs = self.get_train_costs()
+        if train_costs and train_costs.get("summary"):
+            if train_costs["summary"] not in self.search_results:
+                self.search_results.append(train_costs["summary"])
+
         yield from planning.generate_plan_stream(
             self.client,
             self.state,
@@ -500,6 +612,7 @@ class TravelAgent:
             language_code=self.language_code,
             flight_costs=self.get_flight_costs(),
             hotel_costs=self.get_hotel_costs(),
+            train_costs=train_costs,
         )
 
     def refine_plan_stream(self, refinement_type: str) -> Iterator[str]:

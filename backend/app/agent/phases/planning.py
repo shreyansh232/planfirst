@@ -16,35 +16,83 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+PLAN_PARSE_SYSTEM_PROMPT = """You convert itinerary text into structured TravelPlan JSON.
+
+Extraction rules:
+- Return only JSON matching the TravelPlan schema.
+- Preserve concrete itinerary details (days, activities, costs, route).
+- If a value is missing, use sensible empty values (empty list / null) rather than inventing.
+- Keep prices and route wording faithful to the itinerary text.
+"""
+
+
+def _trim_for_parse(text: str, max_chars: int) -> str:
+    """Trim large text payloads to keep structured parsing stable."""
+    if len(text) <= max_chars:
+        return text
+    head = text[: max_chars // 2]
+    tail = text[-(max_chars // 2) :]
+    return f"{head}\n\n...[truncated for parsing]...\n\n{tail}"
+
 
 def _parse_plan_from_text(
     client: "AIClient",
-    system_prompt: str,
     full_response: str,
     research_context: str,
 ) -> TravelPlan:
     """Parse streamed itinerary text into structured TravelPlan."""
-    structured_prompt = f"""Convert this itinerary into structured TravelPlan JSON.
+    itinerary_excerpt = _trim_for_parse(full_response.strip(), 24_000)
+    research_excerpt = _trim_for_parse(research_context.strip(), 8_000)
+
+    attempts = [
+        {"include_research": True, "include_schema": True, "include_example": True},
+        {"include_research": False, "include_schema": True, "include_example": True},
+        {"include_research": False, "include_schema": False, "include_example": True},
+    ]
+    last_error: Exception | None = None
+
+    for idx, options in enumerate(attempts, start=1):
+        context_block = (
+            f"\n\nResearch context (optional support):\n{research_excerpt}"
+            if options["include_research"] and research_excerpt
+            else ""
+        )
+        structured_prompt = f"""Extract a TravelPlan JSON object from this itinerary text.
 
 Itinerary text:
-{full_response}
-
-Research context:
-{research_context}
+{itinerary_excerpt}
+{context_block}
 
 Critical extraction rules:
 - Populate `flights` with 2-4 bookable options when route data is available.
 - Populate `lodgings` with 3-5 options and direct booking links.
-- Preserve all day-wise activity and budget details."""
+- Preserve day-wise activity and budget details.
+- Do not add sections that are not present in the itinerary."""
+        try:
+            return client.chat_structured(
+                [
+                    {"role": "system", "content": PLAN_PARSE_SYSTEM_PROMPT},
+                    {"role": "user", "content": structured_prompt},
+                ],
+                TravelPlan,
+                temperature=0.0,
+                max_retries=1,
+                include_schema=options["include_schema"],
+                include_example=options["include_example"],
+            )
+        except Exception as exc:  # pragma: no cover - network/provider variability
+            last_error = exc
+            logger.warning(
+                "Plan structuring attempt %s failed (research=%s, schema=%s): %s",
+                idx,
+                options["include_research"],
+                options["include_schema"],
+                exc,
+            )
 
-    return client.chat_structured(
-        [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": structured_prompt},
-        ],
-        TravelPlan,
-        temperature=0.2,
-    )
+    if last_error:
+        raise last_error
+    raise ValueError("Failed to structure streamed itinerary into TravelPlan.")
 
 
 def _gather_planning_research(
@@ -115,6 +163,37 @@ Use web_search to find current prices for gaps only, then return the findings.""
     )
 
 
+def _has_train_research(search_results: list[str]) -> bool:
+    return any("Train Cost Estimates (" in block for block in search_results[-8:])
+
+
+def _append_train_research(
+    state: ConversationState,
+    search_results: list[str],
+    train_costs: dict | None = None,
+) -> None:
+    """Attach train research once; prefer cached background results."""
+    if train_costs and train_costs.get("summary"):
+        if train_costs["summary"] not in search_results:
+            search_results.append(train_costs["summary"])
+        return
+
+    if _has_train_research(search_results):
+        return
+
+    if not (state.origin and state.destination):
+        return
+
+    from app.agent.train_search import search_train_costs, should_search_trains
+
+    if should_search_trains(state.origin, state.destination):
+        date_ctx = state.constraints.month_or_season if state.constraints else None
+        budget = state.constraints.budget if state.constraints else None
+        tc = search_train_costs(state.origin, state.destination, date_ctx, budget)
+        if tc and tc.get("summary"):
+            search_results.append(tc["summary"])
+
+
 def generate_plan(
     client: "AIClient",
     state: ConversationState,
@@ -122,6 +201,7 @@ def generate_plan(
     user_interests: list[str],
     on_tool_call: Callable[[str, dict], None] | None = None,
     language_code: str | None = None,
+    train_costs: dict | None = None,
 ) -> str:
     """Generate the travel itinerary (non-streaming)."""
     planning_research = _gather_planning_research(
@@ -164,6 +244,8 @@ def generate_plan(
         if fc:
             search_results.append(fc)
 
+    _append_train_research(state, search_results, train_costs)
+
     # Kick off hotel search if destination is known (sync fallback)
     if state.destination:
         # Extract context if possible
@@ -205,6 +287,7 @@ CURRENCY: ALL prices MUST be in {budget_currency}."""
     plan = enrich_plan_with_trust_metadata(
         plan,
         search_results,
+        default_origin=state.origin,
         default_destination=state.destination,
     )
     state.current_plan = plan
@@ -226,6 +309,7 @@ def generate_plan_stream(
     language_code: str | None = None,
     flight_costs: str = "",
     hotel_costs: str = "",
+    train_costs: dict | None = None,
 ) -> Iterator[str]:
     """Generate the travel itinerary with token streaming."""
     # FIX 1: Only do expensive research if we have NO prior search results
@@ -246,6 +330,7 @@ def generate_plan_stream(
         search_results.append(flight_costs)
     if hotel_costs and hotel_costs not in search_results:
         search_results.append(hotel_costs)
+    _append_train_research(state, search_results, train_costs)
 
     vibe = state.vibe or (state.constraints.vibe if state.constraints else None)
     system_prompt = get_phase_prompt("planning", language_code, vibe=vibe)
@@ -321,9 +406,8 @@ QUALITY RULES:
 - Be concise but specific — 1-2 lines per activity, not paragraphs
 - Do NOT list generic "Breakfast", "Lunch", "Dinner" unless it's a famous food spot
 - Focus on specific places, things to do, and unique experiences
-- Include a "Bookable Flight Options" section with direct booking deeplinks
-- Include a "Bookable Stay Options" section with direct booking deeplinks
-- Include a "Sources Used" section with reliable URLs"""
+- Do NOT include "Bookable Flight Options", "Bookable Stay Options", or "Sources Used" sections in this text.
+- Booking links and sources are rendered in dedicated UI cards; avoid duplicate links in narrative."""
 
     messages = [
         {"role": "system", "content": system_prompt},
@@ -339,13 +423,13 @@ QUALITY RULES:
     try:
         parsed_plan = _parse_plan_from_text(
             client,
-            system_prompt,
             full_response,
             research_context,
         )
         parsed_plan = enrich_plan_with_trust_metadata(
             parsed_plan,
             search_results,
+            default_origin=state.origin,
             default_destination=state.destination,
         )
         state.current_plan = parsed_plan

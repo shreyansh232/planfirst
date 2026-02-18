@@ -58,13 +58,21 @@ List 4-6 key assumptions you're making about the trip — things like:
 - What kind of experiences they're after
 - Any interests they mentioned that you'll incorporate
 - Budget allocation approach
+- Transport mode preference (especially for Indian domestic travel — whether to suggest trains vs flights based on route, budget, and travel style)
 
 RULES:
 - Keep each assumption to ONE short sentence.
 - Don't list obvious things (e.g., "the user wants to travel" — obviously).
 - If the user mentioned specific interests, ALWAYS include them.
 - Be conversational, not formal.
-- Do NOT use bracket tags like "[?]". If something is uncertain, phrase it plainly as a question at the end of the sentence."""
+- Do NOT use bracket tags like "[?]". If something is uncertain, phrase it plainly as a question at the end of the sentence.
+
+TRANSPORT MODE ASSUMPTIONS FOR INDIAN TRAVEL:
+- For travel between Indian cities, include an assumption about whether you're planning for train or flight travel.
+- Consider train for routes under 500km as they are often faster door-to-door and more economical.
+- Consider flights for long distances (1000km+) or when time is limited.
+- Mention the train class if applicable (e.g., "Assuming AC 2-tier train travel for comfort" or "Assuming Sleeper class for budget-friendly option").
+- Always verify train costs are within budget — if train tickets would exceed 40% of total budget, flag this."""
 
 PLANNING_PROMPT = """You are creating a day-by-day travel itinerary.
 
@@ -113,6 +121,19 @@ PRICE ACCURACY (READ THIS):
 - REDUCING COSTS: If the flight takes up more than 60% of the total budget, you MUST recommend cheaper accommodation (hostels, budget hotels) and focus on free activities to ensure the total remains within the user's limit.
 - CALCULATE TOTALS: Double check your math. The sum of all daily totals plus flights must be less than or equal to the user's mentioned budget.
 
+INDIAN DOMESTIC TRAVEL - TRAIN OPTIONS (IMPORTANT):
+- For travel between Indian cities, ALWAYS consider Indian Railways train options as alternatives to flights.
+- Train classes in India: Sleeper (SL), AC 3-tier (3A), AC 2-tier (2A), AC First Class (1A), Executive Chair Car (EC), Shatabdi/Rajdhani.
+- Typical train prices (one-way):
+  - Sleeper class: ₹500–₹1,500 for 500-1000km
+  - AC 3-tier (3A): ₹1,000–₹3,000 for 500-1000km
+  - AC 2-tier (2A): ₹1,500–₹4,500 for 500-1000km
+  - AC First Class (1A): ₹3,000–₹8,000 for 500-1000km
+  - Shatabdi/Rajdhani chair car: ₹1,500–₹3,500
+- Budget Check: If train tickets exceed 40% of total budget, flag this and suggest lower classes or alternative routes.
+- Train booking: IRCTC (irctc.co.in) is the official booking platform. Tatkal tickets available 24 hours before departure.
+- Compare train vs flight costs: For routes under 500km, trains are often faster door-to-door and much cheaper.
+
 FRESHNESS & TIME-SENSITIVE FACTS (CRITICAL):
 - Treat visa rules, entry requirements, transit rules, and opening hours as time-sensitive.
 - If a claim has a validity window, include an explicit "as of <Month YYYY>" marker.
@@ -158,10 +179,8 @@ FORMAT:
 - Don't write essays for each day. Be concise but specific.
 - The budget breakdown at the end should be a clean summary with category totals.
 - Include a "Budget Left" or "Savings Buffer" line if under budget.
-- Add a "Bookable Flight Options" section with 2-4 deeplinks.
-- Add a "Bookable Stay Options" section with 3-5 deeplinks.
-- Add a "Sources Used" section with 3-8 reliable URLs.
-- In "Sources Used", keep only unique domains/URLs (no duplicates)."""
+- Do NOT add separate "Bookable Flight Options", "Bookable Stay Options", or "Sources Used" sections in the narrative output.
+- Booking links and sources are shown in dedicated UI cards, so avoid duplicating them in text."""
 
 REFINEMENT_PROMPT = """The user wants to adjust their plan.
 

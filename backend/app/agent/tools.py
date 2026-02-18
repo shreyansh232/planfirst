@@ -24,6 +24,7 @@ TOOL_DEFINITIONS = [
 
 Use this when you need:
 - Flight prices (search for "round trip flights <origin> to <dest> <month> <year> price")
+- Train ticket prices for Indian travel (search for "Indian Railways train ticket <origin> to <dest> <class> <month> <year> price IRCTC")
 - Hotel/hostel prices (search for "<dest> hotel prices per night <month> <year>")
 - Activity costs, entry fees, transport costs
 - Visa requirements, travel advisories, weather
@@ -33,8 +34,9 @@ TIPS FOR BETTER PRICE RESULTS:
 - Include the currency (e.g. "INR", "USD", "JPY")
 - Include the month and year
 - Include "price" or "cost" in the query
-- Search for specific sites: "skyscanner", "booking.com", "google flights"
+- Search for specific sites: "skyscanner", "booking.com", "google flights", "IRCTC", "railwire"
 - Example: "round trip flights Mumbai to Tokyo March 2026 price INR skyscanner"
+- Example: "Indian Railways train ticket Delhi to Mumbai Sleeper class 2026 price IRCTC"
 """,
             "parameters": {
                 "type": "object",

@@ -9,7 +9,7 @@ import os
 import time
 from typing import Any, Callable, Optional, Type, TypeVar
 
-from openai import OpenAI, RateLimitError
+from openai import APIConnectionError, APIStatusError, OpenAI, RateLimitError
 from pydantic import BaseModel
 
 from app.config import get_settings
@@ -53,13 +53,20 @@ class AIClient:
 
     def _create_completion_with_retry(self, **kwargs):
         last_error: Exception | None = None
-        for attempt in range(3):
+        for attempt in range(4):
             try:
                 return self.client.chat.completions.create(**kwargs)
             except RateLimitError as err:
                 last_error = err
                 # Exponential backoff for upstream rate limits.
                 time.sleep(1.5 * (2**attempt))
+            except (APIConnectionError, APIStatusError) as err:
+                last_error = err
+                status_code = getattr(err, "status_code", None)
+                is_retryable_status = status_code is None or status_code >= 500
+                if not is_retryable_status:
+                    raise
+                time.sleep(1.2 * (2**attempt))
         if last_error:
             raise last_error
         raise RateLimitError("Upstream rate limit")

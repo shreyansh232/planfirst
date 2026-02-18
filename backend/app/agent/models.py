@@ -268,6 +268,35 @@ class LodgingOption(BaseModel):
     )
 
 
+class TrainOption(BaseModel):
+    """Train option with booking link for Indian Railways."""
+
+    route: str = Field(description="Route summary for the train")
+    price: str = Field(description="Total price estimate")
+    train_name: Optional[str] = Field(
+        default=None,
+        description="Train name if available (e.g., 'Rajdhani Express', 'Shatabdi')",
+    )
+    train_class: Optional[str] = Field(
+        default=None,
+        description="Class of travel (e.g., 'Sleeper', 'AC 3-tier', 'AC 2-tier', 'AC First Class')",
+    )
+    depart_time: Optional[str] = Field(
+        default=None, description="Departure time if available"
+    )
+    arrive_time: Optional[str] = Field(
+        default=None, description="Arrival time if available"
+    )
+    duration: Optional[str] = Field(
+        default=None, description="Total journey duration if available"
+    )
+    booking_url: str = Field(description="Direct booking link (e.g., IRCTC)")
+    notes: Optional[str] = Field(
+        default=None,
+        description="Notes such as availability, food service, or platform info",
+    )
+
+
 class TravelPlan(BaseModel):
     """Complete travel itinerary."""
 
@@ -281,6 +310,10 @@ class TravelPlan(BaseModel):
     flights: list[FlightOption] = Field(
         default_factory=list,
         description="Cheapest direct flight options with booking links",
+    )
+    trains: list[TrainOption] = Field(
+        default_factory=list,
+        description="Indian Railways train options with booking links (for Indian domestic travel)",
     )
     lodgings: list[LodgingOption] = Field(
         default_factory=list,
