@@ -74,6 +74,9 @@ backend_startup.log
 *.log
 *.log.*
 
+# Telemetry
+telemetry-id
+
 # Docker
 .docker/
 gemini.md
