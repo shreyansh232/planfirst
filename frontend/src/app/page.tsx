@@ -1,299 +1,122 @@
-"use client";
-
-import { useState, useEffect, Suspense } from "react";
-import { motion } from "framer-motion";
-import { ArrowRight, Compass, Shield, Zap, Globe, Sparkles } from "lucide-react";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
-import { ChatHistorySidebar } from "@/components/layout/ChatHistorySidebar";
-import { Header } from "@/components/layout/Header";
-import { SidebarInset } from "@/components/ui/sidebar";
-import { useProfile } from "@/lib/useProfile";
-import { VibeSelector, VIBES } from "@/components/chat/VibeSelector";
-import { Button } from "@/components/ui/button";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Compass, Shield, Zap, Globe } from "lucide-react";
+import { TripForm } from "@/components/home/TripForm";
+import { HomeLayout } from "@/components/home/HomeLayout";
 
-const Home = () => {
-  const router = useRouter();
-  const [prompt, setPrompt] = useState("");
-  const [selectedVibe, setSelectedVibe] = useState<string | null>(null);
-  const [isVibeSelectorOpen, setIsVibeSelectorOpen] = useState(false);
-  const { user, loading, signOut } = useProfile();
-
-  // Typewriter effect
-  const [placeholder, setPlaceholder] = useState("");
-  
-  useEffect(() => {
-    // ... existing typewriter effect code ...
-    const texts = [
-      "Plan a trip to Chicago from NYC for a week with a $1,500 budget...",
-      "A 10-day hiking adventure in Switzerland starting from Zurich...",
-      "Romantic getaway to Kyoto in autumn with traditional stays...",
-    ];
-    let loopNum = 0;
-    let isDeleting = false;
-    let txt = "";
-    
-    // Using a recursive timeout approach
-    let timer: NodeJS.Timeout;
-
-    const tick = () => {
-      const i = loopNum % texts.length;
-      const fullText = texts[i];
-      let nextDelta = 100;
-
-      if (isDeleting) {
-        txt = fullText.substring(0, txt.length - 1);
-        nextDelta = 30; // Fast delete
-      } else {
-        txt = fullText.substring(0, txt.length + 1);
-        nextDelta = 50 + Math.random() * 50; // Natural typing speed
-      }
-
-      setPlaceholder(txt);
-
-      if (!isDeleting && txt === fullText) {
-        isDeleting = true;
-        nextDelta = 2000; // Pause at end
-      } else if (isDeleting && txt === "") {
-        isDeleting = false;
-        loopNum++;
-        nextDelta = 500; // Pause before next
-      }
-
-      timer = setTimeout(tick, nextDelta);
-    };
-
-    timer = setTimeout(tick, 100);
-    return () => clearTimeout(timer);
-  }, []);
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!prompt.trim()) return;
-    const encodedPrompt = encodeURIComponent(prompt.trim());
-    let url = `/trip?prompt=${encodedPrompt}`;
-    if (selectedVibe) {
-      url += `&vibe=${encodeURIComponent(selectedVibe)}`;
-    }
-    router.push(url);
-  };
-
-  const handleAutoStart = () => {
-    if (!prompt.trim()) return;
-    const encodedPrompt = encodeURIComponent(prompt.trim());
-    let url = `/trip?prompt=${encodedPrompt}`;
-    if (selectedVibe) {
-      url += `&vibe=${encodeURIComponent(selectedVibe)}`;
-    }
-    router.push(url);
-  };
-
+export default function Home() {
   return (
-    <div className="min-h-svh w-full flex bg-background">
-      <Suspense fallback={<div className="w-16 bg-[#FAFAF8]" />}>
-        <ChatHistorySidebar user={user} loading={loading} onSignOut={signOut} />
-      </Suspense>
-      <SidebarInset className="flex-1 flex flex-col">
-        <Header user={user} loading={loading} onSignOut={signOut} />
+    <HomeLayout>
+      <main className="flex-1 max-w-6xl mx-auto px-6 w-full">
+        {/* Hero */}
+        <section className="pt-16 pb-24">
+          <div className="grid lg:grid-cols-2 gap-16 items-center">
+            {/* Left: Copy + Input */}
+            <div className="flex flex-col gap-8">
+              <div className="flex flex-col gap-5">
+                <span className="text-sm font-medium uppercase tracking-[0.3em] text-accent">
+                  AI-Powered Travel
+                </span>
+                <h1 className="text-4xl sm:text-5xl lg:text-6xl leading-[1.1] text-foreground">
+                  Your next journey,{" "}
+                  <span className="italic">thoughtfully planned</span>
+                </h1>
+                <p className="text-lg text-muted-foreground max-w-lg leading-relaxed">
+                  Describe your dream trip in a sentence. We&apos;ll craft a
+                  complete itinerary — flights, stays, experiences — tailored
+                  to your budget and style.
+                </p>
+              </div>
 
-        <main className="flex-1 max-w-6xl mx-auto px-6 w-full">
-          {/* Hero */}
-          <section className="pt-16 pb-24">
-            <div className="grid lg:grid-cols-2 gap-16 items-center">
-              {/* Left: Copy + Input */}
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6 }}
-                className="flex flex-col gap-8"
-              >
-                <div className="flex flex-col gap-5">
-                  <span className="text-sm font-medium uppercase tracking-[0.3em] text-accent">
-                    AI-Powered Travel
-                  </span>
-                  <h1 className="text-4xl sm:text-5xl lg:text-6xl leading-[1.1] text-foreground">
-                    Your next journey,{" "}
-                    <span className="italic">thoughtfully planned</span>
-                  </h1>
-                  <p className="text-lg text-muted-foreground max-w-lg leading-relaxed">
-                    Describe your dream trip in a sentence. We&apos;ll craft a
-                    complete itinerary — flights, stays, experiences — tailored
-                    to your budget and style.
-                  </p>
-                </div>
+              <TripForm />
 
-                <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-                  <div className="rounded-2xl border-2 border-border bg-card shadow-lg p-4">
-                    <textarea
-                      value={prompt}
-                      onChange={(e) => setPrompt(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && !e.shiftKey) {
-                          e.preventDefault();
-                          handleAutoStart();
-                        }
-                      }}
-                      placeholder={placeholder}
-                      aria-label="Describe your trip"
-                      className="w-full h-24 resize-none text-base bg-transparent text-foreground placeholder:text-muted-foreground/60 focus:outline-none font-body"
-                    />
-                    <div className="flex justify-between items-center pt-2">
-                      <Popover open={isVibeSelectorOpen} onOpenChange={setIsVibeSelectorOpen}>
-                        <PopoverTrigger asChild>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            className={`rounded-full h-10 px-4 gap-2 border-border/50 bg-background/50 hover:bg-background ${selectedVibe ? 'text-accent border-accent/30 bg-accent/5' : 'text-muted-foreground'}`}
-                          >
-                            <Sparkles className={`w-4 h-4 ${selectedVibe ? 'fill-accent/20' : ''}`} />
-                            <span className="text-sm font-medium">
-                              {selectedVibe ? (
-                                <>
-                                  <span className="sm:hidden">
-                                    {VIBES.find(v => v.id === selectedVibe)?.mobileLabel || selectedVibe}
-                                  </span>
-                                  <span className="hidden sm:inline">
-                                    {VIBES.find(v => v.id === selectedVibe)?.label || selectedVibe}
-                                  </span>
-                                </>
-                              ) : "Vibe"}
-                            </span>
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-[90vw] sm:w-[500px] p-4 rounded-2xl" align="start">
-                          <VibeSelector 
-                            selectedVibe={selectedVibe} 
-                            onSelect={(v) => {
-                              setSelectedVibe(v);
-                              setIsVibeSelectorOpen(false);
-                            }} 
-                          />
-                        </PopoverContent>
-                      </Popover>
-
-                      <button
-                        type="submit"
-                        className="inline-flex items-center gap-2 bg-primary text-primary-foreground px-6 py-2.5 rounded-full text-sm font-medium hover:opacity-90 transition-opacity cursor-pointer"
-                      >
-                        Start planning
-                        <ArrowRight className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-                </form>
-
-                <div className="flex items-center gap-8 text-sm text-muted-foreground">
-                  <span className="flex items-center gap-2">
-                    <span className="w-1.5 h-1.5 rounded-full bg-accent" />
-                    Personalized
-                  </span>
-                  <span className="flex items-center gap-2">
-                    <span className="w-1.5 h-1.5 rounded-full bg-accent" />
-                    Budget-aware
-                  </span>
-                  <span className="flex items-center gap-2">
-                    <span className="w-1.5 h-1.5 rounded-full bg-accent" />
-                    Multilingual
-                  </span>
-                </div>
-              </motion.div>
-
-              {/* Right: Hero Image */}
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ duration: 0.8, delay: 0.2 }}
-                className="relative hidden lg:block"
-              >
-                <div className="rounded-3xl overflow-hidden shadow-2xl relative w-full h-[520px]">
-                  <Image
-                    src="/hero/hero-travel.jpg"
-                    alt="Stunning coastal village at golden hour"
-                    fill
-                    className="object-cover"
-                    priority
-                  />
-                </div>
-                <div className="absolute -bottom-6 -left-6 bg-card rounded-2xl shadow-lg border border-border p-4 max-w-[220px] z-10">
-                  <p className="text-xs text-muted-foreground mb-1">Latest trip planned</p>
-                  <p className="text-sm font-medium text-foreground">7 days in Cinque Terre</p>
-                  <p className="text-xs text-accent mt-1">$2,400 · 2 travelers</p>
-                </div>
-              </motion.div>
+              <div className="flex items-center gap-8 text-sm text-muted-foreground">
+                <span className="flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-accent" />
+                  Personalized
+                </span>
+                <span className="flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-accent" />
+                  Budget-aware
+                </span>
+                <span className="flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-accent" />
+                  Multilingual
+                </span>
+              </div>
             </div>
-          </section>
 
-          {/* How it works */}
-          <section id="how" className="py-24 border-t border-border">
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.6 }}
-              className="text-center mb-16"
-            >
-              <span className="text-sm font-medium uppercase tracking-[0.3em] text-accent mb-4 block">
-                How it works
-              </span>
-              <h2 className="text-3xl sm:text-4xl mb-4 text-foreground">
-                Travel planning, reimagined
-              </h2>
-              <p className="text-muted-foreground text-lg max-w-xl mx-auto">
-                From idea to itinerary — simple, fast, and personalized.
-              </p>
-            </motion.div>
-
-            <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-              {[
-                {
-                  icon: Compass,
-                  title: "Describe your trip",
-                  desc: "Share where, when, and your budget.",
-                },
-                {
-                  icon: Zap,
-                  title: "We build your plan",
-                  desc: "AI researches and creates your trip plan.",
-                },
-                {
-                  icon: Shield,
-                  title: "Refine and go",
-                  desc: "Swap, add, or change anything instantly.",
-                },
-                {
-                  icon: Globe,
-                  title: "Chat in any language",
-                  desc: "Talk naturally — we understand any language.",
-                },
-              ].map((item, i) => (
-                <motion.div
-                  key={item.title}
-                  initial={{ opacity: 0, y: 20 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ duration: 1.2, delay: i * 0.3 }}
-                  className="group bg-card border border-border rounded-2xl p-5 hover:shadow-lg hover:border-accent/20 transition-all duration-500"
-                >
-                  <div className="w-12 h-12 rounded-xl bg-accent/10 flex items-center justify-center mb-6 group-hover:bg-accent/20 transition-colors">
-                    <item.icon className="w-6 h-6 text-accent" />
-                  </div>
-                  <h3 className="text-lg font-medium mb-3 text-foreground group-hover:text-accent transition-colors">{item.title}</h3>
-                  <p className="text-muted-foreground text-sm leading-tighter">{item.desc}</p>
-                </motion.div>
-              ))}
+            {/* Right: Hero Image */}
+            <div className="relative hidden lg:block">
+              <div className="rounded-3xl overflow-hidden shadow-2xl relative w-full h-[520px]">
+                <Image
+                  src="/hero/hero-travel.jpg"
+                  alt="Stunning coastal village at golden hour"
+                  fill
+                  className="object-cover"
+                  priority
+                />
+              </div>
+              <div className="absolute -bottom-6 -left-6 bg-card rounded-2xl shadow-lg border border-border p-4 max-w-[220px] z-10">
+                <p className="text-xs text-muted-foreground mb-1">Latest trip planned</p>
+                <p className="text-sm font-medium text-foreground">7 days in Cinque Terre</p>
+                <p className="text-xs text-accent mt-1">$2,400 · 2 travelers</p>
+              </div>
             </div>
-          </section>
+          </div>
+        </section>
 
-          {/* Footer */}
-          <footer className="py-12 border-t border-border flex items-center justify-between text-sm text-muted-foreground">
-            <span className="font-semibold text-foreground">Planfirst</span>
-            <span>© {new Date().getFullYear()} Planfirst. All rights reserved.</span>
-          </footer>
-        </main>
-      </SidebarInset>
-    </div>
+        {/* How it works */}
+        <section id="how" className="py-24 border-t border-border">
+          <div className="text-center mb-16">
+            <span className="text-sm font-medium uppercase tracking-[0.3em] text-accent mb-4 block">
+              How it works
+            </span>
+            <h2 className="text-3xl sm:text-4xl mb-4 text-foreground">
+              Travel planning, reimagined
+            </h2>
+            <p className="text-muted-foreground text-lg max-w-xl mx-auto">
+              From idea to itinerary — simple, fast, and personalized.
+            </p>
+          </div>
+
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="group bg-card border border-border rounded-2xl p-5 hover:shadow-lg hover:border-accent/20 transition-all duration-500">
+              <div className="w-12 h-12 rounded-xl bg-accent/10 flex items-center justify-center mb-6 group-hover:bg-accent/20 transition-colors">
+                <Compass className="w-6 h-6 text-accent" />
+              </div>
+              <h3 className="text-lg font-medium mb-3 text-foreground group-hover:text-accent transition-colors">Describe your trip</h3>
+              <p className="text-muted-foreground text-sm leading-tighter">Share where, when, and your budget.</p>
+            </div>
+            <div className="group bg-card border border-border rounded-2xl p-5 hover:shadow-lg hover:border-accent/20 transition-all duration-500">
+              <div className="w-12 h-12 rounded-xl bg-accent/10 flex items-center justify-center mb-6 group-hover:bg-accent/20 transition-colors">
+                <Zap className="w-6 h-6 text-accent" />
+              </div>
+              <h3 className="text-lg font-medium mb-3 text-foreground group-hover:text-accent transition-colors">We build your plan</h3>
+              <p className="text-muted-foreground text-sm leading-tighter">AI researches and creates your trip plan.</p>
+            </div>
+            <div className="group bg-card border border-border rounded-2xl p-5 hover:shadow-lg hover:border-accent/20 transition-all duration-500">
+              <div className="w-12 h-12 rounded-xl bg-accent/10 flex items-center justify-center mb-6 group-hover:bg-accent/20 transition-colors">
+                <Shield className="w-6 h-6 text-accent" />
+              </div>
+              <h3 className="text-lg font-medium mb-3 text-foreground group-hover:text-accent transition-colors">Refine and go</h3>
+              <p className="text-muted-foreground text-sm leading-tighter">Swap, add, or change anything instantly.</p>
+            </div>
+            <div className="group bg-card border border-border rounded-2xl p-5 hover:shadow-lg hover:border-accent/20 transition-all duration-500">
+              <div className="w-12 h-12 rounded-xl bg-accent/10 flex items-center justify-center mb-6 group-hover:bg-accent/20 transition-colors">
+                <Globe className="w-6 h-6 text-accent" />
+              </div>
+              <h3 className="text-lg font-medium mb-3 text-foreground group-hover:text-accent transition-colors">Chat in any language</h3>
+              <p className="text-muted-foreground text-sm leading-tighter">Talk naturally — we understand any language.</p>
+            </div>
+          </div>
+        </section>
+
+        {/* Footer */}
+        <footer className="py-12 border-t border-border flex items-center justify-between text-sm text-muted-foreground">
+          <span className="font-semibold text-foreground">Planfirst</span>
+          <span>© {new Date().getFullYear()} Planfirst. All rights reserved.</span>
+        </footer>
+      </main>
+    </HomeLayout>
   );
-};
-
-export default Home;
+}

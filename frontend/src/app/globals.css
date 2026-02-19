@@ -127,4 +127,13 @@
   h1, h2, h3 {
     font-family: var(--font-display);
   }
+  /* Hide scrollbar for Chrome, Safari and Opera */
+  ::-webkit-scrollbar {
+    display: none;
+  }
+  /* Hide scrollbar for IE, Edge and Firefox */
+  html {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
 }
