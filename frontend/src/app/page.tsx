@@ -113,7 +113,7 @@ export default function Home() {
 
         {/* Footer */}
         <footer className="py-12 border-t border-border flex items-center justify-between text-sm text-muted-foreground">
-          <span className="font-semibold text-foreground">Planfirst</span>
+          <span className="font-medium text-black">Planfirst</span>
           <span>© {new Date().getFullYear()} Planfirst. All rights reserved.</span>
         </footer>
       </main>
